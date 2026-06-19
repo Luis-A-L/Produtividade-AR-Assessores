@@ -7,3 +7,5 @@ rls_fix.sql
 supabase_schema.sql
 supabase/.branches
 supabase/.temp
+
+.vite/

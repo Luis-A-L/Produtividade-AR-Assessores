@@ -22,6 +22,7 @@ import {
   subscribeToEstagiarios,
   subscribeToEntries,
 } from "./lib/stubs";
+import { fetchSheetDataDirectly } from "./lib/supabase";
 import { Estagiario, ProductivityEntry, INITIAL_ESTAGIARIOS } from "./lib/types";
 import {
   BarChart,
@@ -1046,45 +1047,11 @@ export default function App() {
 
     try {
       const activeToken = (await getAccessToken()) || googleToken;
-      // Timeout controller for 60 seconds
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
-
-      // Call the server-side proxy endpoint to fetch Google Sheet bypassing CORS
-      const response = await fetch("/api/sync-sheet", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
-        },
-        body: JSON.stringify({ url: urlStr, token: activeToken }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (errorData.action === "LOGOUT") {
-          handleGoogleLogout();
-          throw new Error("Sua sessão expirou. Fazendo logout automático para reautenticação.");
-        }
-        
-        let errorMsg = errorData.error || "Não foi possível acessar a planilha.";
-        
-        if (response.status === 401 || response.status === 403) {
-          setHasSpreadsheetAccess(false);
-        } else if (response.status === 429) {
-          setHasSpreadsheetAccess(true);
-        } else {
-          setHasSpreadsheetAccess(false);
-        }
-        
-        const error = new Error(errorMsg);
-        (error as any).status = response.status;
-        throw error;
+      if (!activeToken) {
+        throw new Error("Token de acesso não disponível. Faça login novamente.");
       }
 
-      const resData = await response.json();
+      const resData = await fetchSheetDataDirectly(urlStr, activeToken);
       const parseResult = parseSheetData(
         resData.sheets || resData.csvText,
         activeEstagiarios,
@@ -1220,40 +1187,11 @@ export default function App() {
 
       // Executa sincronização imediata
       const activeToken = (await getAccessToken()) || googleToken;
-      // Timeout controller for 60 seconds
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
-
-      const response = await fetch("/api/sync-sheet", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
-        },
-        body: JSON.stringify({
-          url: spreadsheetUrl.trim(),
-          token: activeToken,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (errorData.action === "LOGOUT") {
-          handleGoogleLogout();
-          throw new Error("Sua sessão expirou. Fazendo logout automático para reautenticação.");
-        }
-        
-        const error = new Error(
-          errorData.error ||
-            "Não foi possível sincronizar os dados da planilha. Verifique as permissões de compartilhamento.",
-        );
-        (error as any).status = response.status;
-        throw error;
+      if (!activeToken) {
+        throw new Error("Token de acesso não disponível. Faça login novamente.");
       }
 
-      const resData = await response.json();
+      const resData = await fetchSheetDataDirectly(spreadsheetUrl.trim(), activeToken);
       const parseResult = parseSheetData(
         resData.sheets || resData.csvText,
         estagiarios,
