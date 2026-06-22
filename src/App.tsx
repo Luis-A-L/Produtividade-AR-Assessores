@@ -82,6 +82,62 @@ export default function App() {
 
   const [estagiarios, setEstagiarios] = useState<Estagiario[]>([]);
   const [entries, setEntries] = useState<ProductivityEntry[]>([]);
+
+  // Normalização de lançamentos com sufixos de origem (_cv, _rcv, etc.) para o dia 23/06/2026 em diante
+  const normalizedEntries = useMemo(() => {
+    const ORIGEM_MAP: Record<string, string> = {
+      cv: "CV",
+      rcv: "RCV",
+      dcv: "DCV",
+      cr: "CR",
+      rcr: "RCR",
+      dcr: "DCR",
+    };
+
+    const groups: Record<string, {
+      id: string;
+      estagiarioId: string;
+      date: string;
+      count: number;
+      origens: Record<string, number>;
+    }> = {};
+
+    entries.forEach((e) => {
+      let realEstagiarioId = e.estagiarioId;
+      let origemKey: string | null = null;
+
+      // Siglas e divisões só passam a valer a partir de 2026-06-23
+      if (e.date >= "2026-06-23") {
+        const parts = e.estagiarioId.split("_");
+        if (parts.length > 1) {
+          const lastPart = parts[parts.length - 1].toLowerCase();
+          if (ORIGEM_MAP[lastPart]) {
+            origemKey = ORIGEM_MAP[lastPart];
+            realEstagiarioId = parts.slice(0, -1).join("_");
+          }
+        }
+      }
+
+      const key = `${realEstagiarioId}_${e.date}`;
+      if (!groups[key]) {
+        groups[key] = {
+          id: key,
+          estagiarioId: realEstagiarioId,
+          date: e.date,
+          count: 0,
+          origens: {},
+        };
+      }
+
+      groups[key].count += e.count;
+      if (origemKey && e.count > 0) {
+        groups[key].origens[origemKey] = (groups[key].origens[origemKey] || 0) + e.count;
+      }
+    });
+
+    return Object.values(groups) as Array<ProductivityEntry & { origens: Record<string, number> }>;
+  }, [entries]);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
@@ -705,6 +761,7 @@ export default function App() {
 
         let estagiarioColIdx = -1;
         let qtdColIdx = -1;
+        let origemColIdx = -1;
         let headerRowIdxToSkip = -1;
 
         for (let i = 0; i < firstRows.length; i++) {
@@ -722,9 +779,17 @@ export default function App() {
               h.includes("processos") ||
               h.includes("total"),
           );
+          const oIdx = headerRow.findIndex(
+            (h) =>
+              h.includes("origem") ||
+              h.includes("tipo") ||
+              h.includes("categoria") ||
+              h.includes("setor"),
+          );
           if (eIdx !== -1 && qIdx !== -1) {
             estagiarioColIdx = eIdx;
             qtdColIdx = qIdx;
+            origemColIdx = oIdx;
             headerRowIdxToSkip = i;
             break;
           }
@@ -750,6 +815,7 @@ export default function App() {
 
             const estagiarioName = (row[estagiarioColIdx] || "").trim();
             const qtdStr = row[qtdColIdx];
+            const rawOrigem = origemColIdx !== -1 && origemColIdx < row.length ? row[origemColIdx].trim() : "";
             if (!estagiarioName || estagiarioName === "" || !qtdStr) continue;
 
             let estagiarioId = findEstagiarioIdLocal(estagiarioName);
@@ -769,8 +835,15 @@ export default function App() {
             const cleanedVal = qtdStr.replace(/\s/g, "").replace(",", ".");
             const parsedVal = Math.round(parseFloat(cleanedVal));
             if (!isNaN(parsedVal) && parsedVal > 0) {
+              let finalEstagiarioId = estagiarioId;
+              const normOrigem = rawOrigem.toLowerCase();
+              const validSiglas = ["cv", "rcv", "dcv", "cr", "rcr", "dcr"];
+              if (isoDate >= "2026-06-23" && validSiglas.includes(normOrigem)) {
+                finalEstagiarioId = `${estagiarioId}_${normOrigem}`;
+              }
+
               parsedEntries.push({
-                estagiarioId,
+                estagiarioId: finalEstagiarioId,
                 date: isoDate,
                 count: parsedVal,
               });
@@ -929,6 +1002,22 @@ export default function App() {
         }
       });
 
+      let origemColIdx = -1;
+      nameRow.forEach((cell, cIdx) => {
+        const normCell = normalizeText(cell);
+        if (normCell === "origem" || normCell.includes("origem")) {
+          origemColIdx = cIdx;
+        }
+      });
+      if (origemColIdx === -1 && rows[0]) {
+        rows[0].forEach((cell, cIdx) => {
+          const normCell = normalizeText(cell);
+          if (normCell === "origem" || normCell.includes("origem")) {
+            origemColIdx = cIdx;
+          }
+        });
+      }
+
       // 3.4 Processar as linhas de dados (tendo data válida em `dateColIdx`)
       rows.forEach((row) => {
         if (dateColIdx >= row.length) return;
@@ -937,20 +1026,24 @@ export default function App() {
         if (!isoDate || isoDate < "2026-04-01" || isoDate > getCurrentDate())
           return;
 
-        // Fim de semana não pode contabilizar (Domingo=0, Sabado=6)
-        // const checkDate = new Date(`${isoDate}T12:00:00`);
-        // const dayOfWeek = checkDate.getDay();
-        // if (dayOfWeek === 0 || dayOfWeek === 6) { return; }
+        const rawOrigem = origemColIdx !== -1 && origemColIdx < row.length ? row[origemColIdx].trim() : "";
+        const normOrigem = rawOrigem.toLowerCase();
+        const validSiglas = ["cv", "rcv", "dcv", "cr", "rcr", "dcr"];
 
         mappedCols.forEach(({ colIndex, estagiarioId }) => {
           if (colIndex < row.length) {
             const rawVal = row[colIndex];
+            let finalEstagiarioId = estagiarioId;
+            if (isoDate >= "2026-06-23" && validSiglas.includes(normOrigem)) {
+              finalEstagiarioId = `${estagiarioId}_${normOrigem}`;
+            }
+
             if (rawVal) {
               const cleanedVal = rawVal.replace(/\s/g, "").replace(",", ".");
               const parsedVal = Math.round(parseFloat(cleanedVal));
               if (!isNaN(parsedVal) && parsedVal >= 0) {
                 parsedEntries.push({
-                  estagiarioId,
+                  estagiarioId: finalEstagiarioId,
                   date: isoDate,
                   count: parsedVal,
                 });
@@ -958,7 +1051,7 @@ export default function App() {
             } else {
               // Se a célula está vazia, nós assumimos produtividade zero
               parsedEntries.push({
-                estagiarioId,
+                estagiarioId: finalEstagiarioId,
                 date: isoDate,
                 count: 0,
               });
@@ -1519,13 +1612,13 @@ export default function App() {
 
   // Real-time notifications for productivity updates
   useEffect(() => {
-    if (!estagiarios || estagiarios.length === 0 || entries.length === 0)
+    if (!estagiarios || estagiarios.length === 0 || normalizedEntries.length === 0)
       return;
 
     const todayStr = getCurrentDate();
     const currentTodayCounts = estagiarios.reduce(
       (acc, estagiario) => {
-        const todayEntry = entries.find(
+        const todayEntry = normalizedEntries.find(
           (e) => e.estagiarioId === estagiario.id && e.date === todayStr,
         );
         acc[estagiario.id] = todayEntry ? todayEntry.count : 0;
@@ -1569,7 +1662,7 @@ export default function App() {
     }
 
     previousTodayCounts.current = currentTodayCounts;
-  }, [entries, estagiarios]);
+  }, [normalizedEntries, estagiarios]);
 
   // Current formatted time & date
   const formattedTime = useMemo(() => {
@@ -1805,11 +1898,11 @@ export default function App() {
   // Map entries for speed lookup
   const entriesMap = useMemo(() => {
     const map: Record<string, number> = {};
-    entries.forEach((entry) => {
+    normalizedEntries.forEach((entry) => {
       map[`${entry.estagiarioId}_${entry.date}`] = entry.count;
     });
     return map;
-  }, [entries]);
+  }, [normalizedEntries]);
 
   const maxDailyCountInMonth = useMemo(() => {
     let max = 0;
@@ -1844,7 +1937,7 @@ export default function App() {
 
     return estagiarios.map((estagiario) => {
       // Find entries for this estagiario in the selected month
-      const filteredEntries = entries.filter(
+      const filteredEntries = normalizedEntries.filter(
         (e) =>
           e.estagiarioId === estagiario.id && e.date.startsWith(selectedMonth),
       );
@@ -1859,15 +1952,16 @@ export default function App() {
       const averagePerDay =
         daysWorked > 0 ? Number((totalAnalyzed / daysWorked).toFixed(1)) : 0;
 
-      const todayEntry = entries.find(
+      const todayEntry = normalizedEntries.find(
         (e) => e.estagiarioId === estagiario.id && e.date === todayStr,
       );
       const todayAnalyzed = todayEntry ? todayEntry.count : 0;
 
-      const detailEntry = entries.find(
+      const detailEntry = normalizedEntries.find(
         (e) => e.estagiarioId === estagiario.id && e.date === selectedDetailDate,
       );
       const detailAnalyzed = detailEntry ? detailEntry.count : 0;
+      const detailOrigens = detailEntry ? (detailEntry as any).origens : {};
 
       const role =
         estagiario.role === "pos_graduacao" ? "pos_graduacao" : "graduacao";
@@ -1902,13 +1996,14 @@ export default function App() {
         totalAnalyzed,
         todayAnalyzed,
         detailAnalyzed,
+        detailOrigens,
         daysWorked,
         averagePerDay,
         status,
         entriesList: filteredEntries,
       };
     });
-  }, [estagiarios, entries, selectedMonth, selectedDetailDate]);
+  }, [estagiarios, normalizedEntries, selectedMonth, selectedDetailDate]);
 
   // Total de processos do dia selecionado
   const totalDayAnalyzed = useMemo(() => {
@@ -1917,7 +2012,7 @@ export default function App() {
 
   // Global aggregate metrics
   const globalMetrics = useMemo(() => {
-    const filteredEntries = entries.filter((e) =>
+    const filteredEntries = normalizedEntries.filter((e) =>
       e.date.startsWith(selectedMonth),
     );
     const totalAnalyzed = filteredEntries.reduce(
@@ -1934,7 +2029,7 @@ export default function App() {
       prevY -= 1;
     }
     const prevMonthStr = `${prevY}-${String(prevM).padStart(2, "0")}`;
-    const previousMonthEntries = entries.filter((e) =>
+    const previousMonthEntries = normalizedEntries.filter((e) =>
       e.date.startsWith(prevMonthStr),
     );
     const previousMonthTotalAnalyzed = previousMonthEntries.reduce(
@@ -1980,7 +2075,7 @@ export default function App() {
       averagePerEstagiario,
       teamDailyGoal,
     };
-  }, [entries, selectedMonth, parsedEstagiariosData, estagiarios]);
+  }, [normalizedEntries, selectedMonth, parsedEstagiariosData, estagiarios]);
 
   // Listed Estagiarios, filtered by query
   const filteredEstagiariosData = useMemo(() => {
@@ -2057,7 +2152,7 @@ export default function App() {
       map.set(dStr, 0);
     }
 
-    const filteredEntries = entries.filter((e) =>
+    const filteredEntries = normalizedEntries.filter((e) =>
       e.date.startsWith(selectedMonth),
     );
     for (const e of filteredEntries) {
@@ -2073,7 +2168,7 @@ export default function App() {
         total: count,
       };
     });
-  }, [entries, selectedMonth]);
+  }, [normalizedEntries, selectedMonth]);
 
   // Distribution by Estagiario Role (Recharts)
   const distributionChartData = useMemo(() => {
@@ -2102,7 +2197,7 @@ export default function App() {
 
   // List of all active month entries sorted chronologically (newest first)
   const chronologicalEntries = useMemo(() => {
-    const list = entries.filter((e) => e.date.startsWith(selectedMonth));
+    const list = normalizedEntries.filter((e) => e.date.startsWith(selectedMonth));
     list.sort((a, b) => {
       const dateCompare = b.date.localeCompare(a.date);
       if (dateCompare !== 0) return dateCompare;
@@ -2113,7 +2208,7 @@ export default function App() {
       return nameA.localeCompare(nameB);
     });
     return list;
-  }, [entries, selectedMonth, estagiarios]);
+  }, [normalizedEntries, selectedMonth, estagiarios]);
 
   // Search-filtered list of chronological entries
   const filteredChronologicalEntries = useMemo(() => {
@@ -2893,6 +2988,18 @@ export default function App() {
                             <span className="text-[9px] text-slate-400 font-mono mt-1 w-full text-center truncate">
                               META: {est.dailyGoal}
                             </span>
+                            {/* Siglas e quantidades detalhadas por origem a partir de 23/06/2026 */}
+                            {est.detailOrigens && Object.keys(est.detailOrigens).length > 0 && (
+                              <div className="flex flex-wrap items-center justify-center gap-1 mt-1.5 pt-1.5 border-t border-dashed border-slate-200 w-full select-none">
+                                {Object.entries(est.detailOrigens)
+                                  .filter(([_, val]) => val > 0)
+                                  .map(([sigla, val]) => (
+                                    <span key={sigla} className="bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded text-[8px] font-black uppercase">
+                                      {sigla}:{val}
+                                    </span>
+                                  ))}
+                              </div>
+                            )}
                           </div>
                         ))}
                     </div>
