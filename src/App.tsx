@@ -737,7 +737,7 @@ export default function App() {
             const isoDate = parseDateToISO(rawDate);
             if (
               !isoDate ||
-              isoDate < "2026-06-01" ||
+              isoDate < "2026-04-01" ||
               isoDate > getCurrentDate()
             )
               continue;
@@ -933,7 +933,7 @@ export default function App() {
         if (dateColIdx >= row.length) return;
         const rawDate = row[dateColIdx];
         const isoDate = parseDateToISO(rawDate);
-        if (!isoDate || isoDate < "2026-06-01" || isoDate > getCurrentDate())
+        if (!isoDate || isoDate < "2026-04-01" || isoDate > getCurrentDate())
           return;
 
         // Fim de semana não pode contabilizar (Domingo=0, Sabado=6)
