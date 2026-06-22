@@ -1117,9 +1117,11 @@ export default function App() {
         setHasSpreadsheetAccess(false);
       }
       
-      const errMsg =
-        err.message ||
-        "Verifique as configurações de compartilhamento da planilha.";
+      let errMsg = err.message || "Verifique as configurações de compartilhamento da planilha.";
+      const isScopeError = errMsg.toLowerCase().includes("scope") || errMsg.toLowerCase().includes("insufficient");
+      if (isScopeError) {
+        errMsg = "Erro de Permissão (Escopo Insuficiente): A conta conectada não concedeu permissão para ler planilhas do Google. Por favor, faça logout do Google no banner ou menu lateral e reconecte, garantindo que autorizou o acesso às planilhas. Se o erro persistir, certifique-se de que o escopo de leitura do Sheets ('https://www.googleapis.com/auth/spreadsheets.readonly') está habilitado no provedor Google dentro do painel do Supabase.";
+      }
       setSheetSyncError(errMsg);
       if (showFeedback) {
         alert(`Falha na sincronização em tempo real: ${errMsg}`);

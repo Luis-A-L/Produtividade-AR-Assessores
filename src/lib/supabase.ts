@@ -55,7 +55,7 @@ export const signInWithGoogle = async () => {
     const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
-                  scopes: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+                  scopes: 'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile openid',
                   redirectTo: window.location.origin + import.meta.env.BASE_URL,
                   queryParams: {
                             access_type: 'offline',
