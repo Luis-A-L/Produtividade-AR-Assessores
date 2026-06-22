@@ -116,8 +116,8 @@ export default function App() {
       let realEstagiarioId = e.estagiarioId;
       let origemKey: string | null = null;
 
-      // Siglas e divisões só passam a valer a partir de 2026-06-23
-      if (e.date >= "2026-06-23") {
+      // Siglas e divisões só passam a valer a partir de 2026-06-22
+      if (e.date >= "2026-06-22") {
         const parts = e.estagiarioId.split("_");
         if (parts.length > 1) {
           const lastPart = parts[parts.length - 1].toLowerCase();
@@ -274,6 +274,9 @@ export default function App() {
     boolean | null
   >(null);
   const [selectedDetailDate, setSelectedDetailDate] = useState<string>(getCurrentDate());
+  const [detailedProcesses, setDetailedProcesses] = useState<Record<string, { origem: string; date: string; timestamp: string }>>({});
+  const [loadingProcesses, setLoadingProcesses] = useState<boolean>(false);
+  const [detailTab, setDetailTab] = useState<"month" | "day">("month");
 
   // Notifications
   const previousTodayCounts = React.useRef<Record<string, number>>({});
@@ -368,6 +371,34 @@ export default function App() {
       setIsEditingCadastre(false);
     }
   }, [selectedEstagiarioDetail, estagiarios]);
+
+  // Carregar processos detalhados com horario
+  useEffect(() => {
+    if (!selectedEstagiarioDetail) {
+      setDetailedProcesses({});
+      return;
+    }
+
+    const fetchDetailedProcesses = async () => {
+      setLoadingProcesses(true);
+      try {
+        const key = `proc_time_${selectedEstagiarioDetail}_${selectedMonth}`;
+        const snap = await getDoc(doc(db, "settings", key));
+        if (snap.exists()) {
+          setDetailedProcesses(snap.data() || {});
+        } else {
+          setDetailedProcesses({});
+        }
+      } catch (err) {
+        console.error("Erro ao buscar processos detalhados:", err);
+      } finally {
+        setLoadingProcesses(false);
+      }
+    };
+
+    fetchDetailedProcesses();
+    setDetailTab("month"); // Sempre abre na aba mensal por padrao
+  }, [selectedEstagiarioDetail, selectedMonth]);
 
   // Fetch Data
   const fetchData = async () => {
@@ -541,6 +572,7 @@ export default function App() {
     let estagiariosSheetContent = "";
     let estagiariosSheetName = "";
     const controleSheets: { name: string; content: string }[] = [];
+    const candidateIndividualSheets: { name: string; content: string }[] = [];
 
     // 1. Identify sheets
     Object.entries(sheets).forEach(([name, content]) => {
@@ -557,6 +589,9 @@ export default function App() {
       } else if (norm === "controle") {
         // Apenas a aba de Controle
         controleSheets.push({ name, content });
+      } else {
+        // Pode ser aba individual de estagiario
+        candidateIndividualSheets.push({ name, content });
       }
     });
 
@@ -719,6 +754,12 @@ export default function App() {
     });
 
     const parsedEntries: Omit<ProductivityEntry, "id">[] = [];
+    const parsedDetailedProcesses: Array<{
+      estagiarioId: string;
+      date: string;
+      numeroProcesso: string;
+      origem: string;
+    }> = [];
 
     const findEstagiarioIdLocal = (name: string): string | null => {
       const normName = normalizeText(name);
@@ -727,6 +768,97 @@ export default function App() {
       );
       return found ? found.id : null;
     };
+
+    // Identificar abas individuais reais vinculando aos estagiarios
+    const individualSheetsProcessed: { estagiarioId: string; content: string; name: string }[] = [];
+    const individualEstagiarioIds = new Set<string>();
+
+    candidateIndividualSheets.forEach(({ name, content }) => {
+      const estagId = findEstagiarioIdLocal(name);
+      if (estagId) {
+        individualSheetsProcessed.push({ estagiarioId: estagId, content, name });
+        individualEstagiarioIds.add(estagId);
+      }
+    });
+
+    // Processar abas individuais
+    individualSheetsProcessed.forEach(({ estagiarioId, content, name }) => {
+      if (!content) return;
+      const lines = content
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+      if (lines.length <= 1) return;
+
+      const delimiter = getDelimiter(content);
+      const rows = lines.map((line) =>
+        line.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ""))
+      );
+
+      // Achar cabeçalho: Data, Nº do Processo (ou Processo), Origem
+      let dateColIdx = -1;
+      let procColIdx = -1;
+      let origemColIdx = -1;
+      let headerRowIdx = -1;
+
+      for (let r = 0; r < Math.min(rows.length, 10); r++) {
+        const row = rows[r].map((h) => normalizeText(h || ""));
+        const dIdx = row.findIndex((h) => h === "data" || h.includes("data"));
+        const pIdx = row.findIndex((h) => h.includes("processo") || h.includes("nº"));
+        const oIdx = row.findIndex((h) => h === "origem" || h.includes("origem"));
+
+        if (dIdx !== -1 && pIdx !== -1) {
+          dateColIdx = dIdx;
+          procColIdx = pIdx;
+          origemColIdx = oIdx;
+          headerRowIdx = r;
+          break;
+        }
+      }
+
+      if (dateColIdx === -1) {
+        dateColIdx = 0;
+        procColIdx = 1;
+        origemColIdx = 2;
+        headerRowIdx = 1;
+      }
+
+      const validSiglas = ["cv", "rcv", "dcv", "cr", "rcr", "dcr"];
+
+      for (let r = headerRowIdx + 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (dateColIdx >= row.length) continue;
+
+        const rawDate = row[dateColIdx] || "";
+        const isoDate = parseDateToISO(rawDate);
+        if (!isoDate || isoDate < "2026-04-01" || isoDate > getCurrentDate()) continue;
+
+        const rawProc = procColIdx !== -1 && procColIdx < row.length ? row[procColIdx].trim() : "";
+        const rawOrigem = origemColIdx !== -1 && origemColIdx < row.length ? row[origemColIdx].trim() : "";
+        const normOrigem = rawOrigem.toLowerCase();
+
+        if (!rawProc) continue;
+
+        let finalEstagiarioId = estagiarioId;
+        // As siglas passam a valer a partir de 22/06/2026 nos dados novos
+        if (isoDate >= "2026-06-22" && validSiglas.includes(normOrigem)) {
+          finalEstagiarioId = `${estagiarioId}_${normOrigem}`;
+        }
+
+        parsedEntries.push({
+          estagiarioId: finalEstagiarioId,
+          date: isoDate,
+          count: 1, // Cada linha de processo representa 1!
+        });
+
+        parsedDetailedProcesses.push({
+          estagiarioId,
+          date: isoDate,
+          numeroProcesso: rawProc,
+          origem: normOrigem.toUpperCase() || "CV",
+        });
+      }
+    });
 
     // 3. Process Controle (Cases) Sheets
     controleSheets.forEach(({ name: cName, content: cContent }) => {
@@ -842,13 +974,18 @@ export default function App() {
               estagiarioId = generatedId;
             }
 
+            // Ignora dados do controle se o estagiário já possui aba individual
+            if (individualEstagiarioIds.has(estagiarioId)) {
+              continue;
+            }
+
             const cleanedVal = qtdStr.replace(/\s/g, "").replace(",", ".");
             const parsedVal = Math.round(parseFloat(cleanedVal));
             if (!isNaN(parsedVal) && parsedVal > 0) {
               let finalEstagiarioId = estagiarioId;
               const normOrigem = rawOrigem.toLowerCase();
               const validSiglas = ["cv", "rcv", "dcv", "cr", "rcr", "dcr"];
-              if (isoDate >= "2026-06-23" && validSiglas.includes(normOrigem)) {
+              if (isoDate >= "2026-06-22" && validSiglas.includes(normOrigem)) {
                 finalEstagiarioId = `${estagiarioId}_${normOrigem}`;
               }
 
@@ -1041,10 +1178,15 @@ export default function App() {
         const validSiglas = ["cv", "rcv", "dcv", "cr", "rcr", "dcr"];
 
         mappedCols.forEach(({ colIndex, estagiarioId }) => {
+          // Ignora dados do controle se o estagiário já possui aba individual
+          if (individualEstagiarioIds.has(estagiarioId)) {
+            return;
+          }
+
           if (colIndex < row.length) {
             const rawVal = row[colIndex];
             let finalEstagiarioId = estagiarioId;
-            if (isoDate >= "2026-06-23" && validSiglas.includes(normOrigem)) {
+            if (isoDate >= "2026-06-22" && validSiglas.includes(normOrigem)) {
               finalEstagiarioId = `${estagiarioId}_${normOrigem}`;
             }
 
@@ -1122,6 +1264,7 @@ export default function App() {
       entries: consolidatedEntries,
       estagiariosCreated: uniqueEstagiariosCreated,
       estagiariosDetailedToCreate: estagiariosFromSheet,
+      detailedProcesses: parsedDetailedProcesses,
       message: msg,
     };
   };
@@ -1197,6 +1340,7 @@ export default function App() {
         urlStr,
         !showFeedback,
         parseResult.estagiariosDetailedToCreate || [],
+        parseResult.detailedProcesses || [],
       );
 
       if (showFeedback) {
@@ -1274,6 +1418,7 @@ export default function App() {
         spreadsheetUrl,
         false,
         parseResult.estagiariosDetailedToCreate || [],
+        parseResult.detailedProcesses || [],
       );
       showToast(
         "Dados salvos e sincronizados no banco com sucesso!",
@@ -1348,6 +1493,7 @@ export default function App() {
         spreadsheetUrl.trim(),
         true, // isStartupSilent = true
         parseResult.estagiariosDetailedToCreate || [],
+        parseResult.detailedProcesses || [],
       );
 
       alert(
@@ -1413,9 +1559,47 @@ export default function App() {
     sheetUrl: string = spreadsheetUrl,
     isStartupSilent: boolean = false,
     estagiariosDetailedToCreate: Estagiario[] = previewEstagiariosDetailed,
+    detailedProcesses: Array<{ estagiarioId: string; date: string; numeroProcesso: string; origem: string }> = [],
   ) => {
     setIsSaving(true);
     try {
+      // Gravar timestamps dos processos detalhados nas abas individuais se existirem
+      if (detailedProcesses && detailedProcesses.length > 0) {
+        const processesBySettingsKey: Record<string, typeof detailedProcesses> = {};
+        detailedProcesses.forEach((proc) => {
+          const monthKey = proc.date.substring(0, 7); // "2026-06"
+          const key = `proc_time_${proc.estagiarioId}_${monthKey}`;
+          if (!processesBySettingsKey[key]) {
+            processesBySettingsKey[key] = [];
+          }
+          processesBySettingsKey[key].push(proc);
+        });
+
+        for (const [key, procs] of Object.entries(processesBySettingsKey)) {
+          try {
+            const snap = await getDoc(doc(db, "settings", key));
+            const existingData: Record<string, { origem: string; date: string; timestamp: string }> = snap.exists() ? snap.data() || {} : {};
+            let hasChanges = false;
+
+            procs.forEach((p) => {
+              if (!existingData[p.numeroProcesso]) {
+                existingData[p.numeroProcesso] = {
+                  origem: p.origem,
+                  date: p.date,
+                  timestamp: new Date().toISOString(),
+                };
+                hasChanges = true;
+              }
+            });
+
+            if (hasChanges || !snap.exists()) {
+              await setDoc(doc(db, "settings", key), existingData);
+            }
+          } catch (procErr) {
+            console.error(`Erro ao salvar processos para chave ${key}:`, procErr);
+          }
+        }
+      }
       // 1. Upsert estagiários (usar lista detalhada se disponível, fallback para lista de nomes)
       let estagiariosToUpsert: Estagiario[] = [];
 
@@ -4114,69 +4298,211 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Detailed List of individual records */}
-                      <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                        <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                          Histórico de Lançamentos
-                        </h5>
+                      {/* Tabs selector */}
+                      <div className="px-6 pt-4">
+                        <div className="flex border border-slate-200 mb-2 bg-slate-50 p-1 rounded-lg">
+                          <button
+                            type="button"
+                            onClick={() => setDetailTab("month")}
+                            className={`flex-grow text-center py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                              detailTab === "month"
+                                ? "bg-white text-slate-800 shadow-sm"
+                                : "text-slate-500 hover:text-slate-800"
+                            }`}
+                          >
+                            Resumo Mensal
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDetailTab("day")}
+                            className={`flex-grow text-center py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                              detailTab === "day"
+                                ? "bg-white text-slate-800 shadow-sm"
+                                : "text-slate-500 hover:text-slate-800"
+                            }`}
+                          >
+                            Processos do Dia ({selectedDetailDate.split("-").reverse().join("/")})
+                          </button>
+                        </div>
+                      </div>
 
-                        {detailedEstagiario.entriesList.length === 0 ? (
-                          <div className="p-8 text-center text-slate-400">
-                            <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                            Nenhum lançamento cadastrado para este período.
-                          </div>
-                        ) : (
-                          <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden shadow-sm">
-                            {detailedEstagiario.entriesList.map((entry) => (
-                              <div
-                                key={entry.id}
-                                className="p-3 bg-white hover:bg-slate-50 flex justify-between items-center transition-colors"
-                              >
-                                <div className="flex items-center gap-2.5">
-                                  <CalendarDays className="w-4 h-4 text-slate-400" />
-                                  <div>
-                                    <span className="block text-xs font-bold text-slate-700">
-                                      {entry.date
-                                        .split("-")
-                                        .reverse()
-                                        .join("/")}
-                                    </span>
-                                    <span className="text-[10px] text-slate-400">
-                                      Ano de Referência:{" "}
-                                      {entry.date.split("-")[0]}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <span className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded">
-                                    {entry.count} conclúidos
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      onClick={() => {
-                                        setFormEstagiarioId(entry.estagiarioId);
-                                        setFormDate(entry.date);
-                                        setFormCount(entry.count);
-                                        setFormEditingId(entry.id);
-                                        setIsLaunchModalOpen(true);
-                                      }}
-                                      className="p-1 text-slate-400 hover:text-slate-700 transition-colors"
-                                    >
-                                      <Edit3 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() =>
-                                        handleDeleteEntry(entry.id)
-                                      }
-                                      className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                </div>
+                      {/* Detailed List of individual records */}
+                      <div className="flex-1 overflow-y-auto p-6 space-y-4 pt-2">
+                        {detailTab === "month" ? (
+                          <>
+                            <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                              Histórico de Lançamentos
+                            </h5>
+
+                            {detailedEstagiario.entriesList.length === 0 ? (
+                              <div className="p-8 text-center text-slate-400">
+                                <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                                Nenhum lançamento cadastrado para este período.
                               </div>
-                            ))}
-                          </div>
+                            ) : (
+                              <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden shadow-sm">
+                                {detailedEstagiario.entriesList.map((entry) => (
+                                  <div
+                                    key={entry.id}
+                                    className="p-3 bg-white hover:bg-slate-50 flex justify-between items-center transition-colors"
+                                  >
+                                    <div className="flex items-center gap-2.5">
+                                      <CalendarDays className="w-4 h-4 text-slate-400" />
+                                      <div>
+                                        <span className="block text-xs font-bold text-slate-700">
+                                          {entry.date
+                                            .split("-")
+                                            .reverse()
+                                            .join("/")}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">
+                                          Ano de Referência:{" "}
+                                          {entry.date.split("-")[0]}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <span className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded">
+                                        {entry.count} concluídos
+                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          onClick={() => {
+                                            setFormEstagiarioId(entry.estagiarioId);
+                                            setFormDate(entry.date);
+                                            setFormCount(entry.count);
+                                            setFormEditingId(entry.id);
+                                            setIsLaunchModalOpen(true);
+                                          }}
+                                          className="p-1 text-slate-400 hover:text-slate-700 transition-colors"
+                                        >
+                                          <Edit3 className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            handleDeleteEntry(entry.id)
+                                          }
+                                          className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+                              Linha do Tempo dos Processos
+                            </h5>
+
+                            {loadingProcesses ? (
+                              <div className="p-8 text-center text-slate-400 font-bold text-xs animate-pulse">
+                                Carregando processos do banco...
+                              </div>
+                            ) : (() => {
+                              const dayProcs = Object.entries(detailedProcesses)
+                                .filter(([_, info]) => info.date === selectedDetailDate)
+                                .map(([numProcesso, info]) => ({
+                                  numeroProcesso: numProcesso,
+                                  ...info,
+                                }))
+                                .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+                              if (dayProcs.length === 0) {
+                                return (
+                                  <div className="p-8 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                                    <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                                    Nenhum processo individual registrado para esta data no sistema.
+                                    <p className="text-[10px] text-slate-400 mt-1 font-semibold">
+                                      As abas individuais contam processos sincronizados a partir da planilha.
+                                    </p>
+                                  </div>
+                                );
+                              }
+
+                              const formatDuration = (ms: number): string => {
+                                const totalSecs = Math.floor(ms / 1000);
+                                if (totalSecs < 60) return `${totalSecs}s`;
+                                const mins = Math.floor(totalSecs / 60);
+                                const secs = totalSecs % 60;
+                                if (mins < 60) return `${mins}m ${secs}s`;
+                                const hours = Math.floor(mins / 60);
+                                const remMins = mins % 60;
+                                return `${hours}h ${remMins}m`;
+                              };
+
+                              return (
+                                <div className="relative pl-6 border-l border-slate-200 space-y-6 py-2 ml-3">
+                                  {dayProcs.map((proc, index) => {
+                                    const timeStr = new Date(proc.timestamp).toLocaleTimeString("pt-BR", {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      second: "2-digit",
+                                    });
+
+                                    // Calcular intervalo para o anterior
+                                    let intervalStr = "";
+                                    if (index > 0) {
+                                      const prevProc = dayProcs[index - 1];
+                                      const diff = new Date(proc.timestamp).getTime() - new Date(prevProc.timestamp).getTime();
+                                      if (diff > 1000) {
+                                        intervalStr = formatDuration(diff);
+                                      } else {
+                                        intervalStr = "Registrado em lote";
+                                      }
+                                    }
+
+                                    // Cores dos badges
+                                    const isCrime = proc.origem.includes("CR");
+                                    const badgeColor = isCrime
+                                      ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                      : "bg-blue-50 text-blue-700 border border-blue-200";
+
+                                    return (
+                                      <div key={proc.numeroProcesso} className="relative">
+                                        {/* Marcador na linha do tempo */}
+                                        <div className="absolute -left-[31px] top-1.5 w-4.5 h-4.5 rounded-full bg-slate-900 border-4 border-white flex items-center justify-center shadow-xs">
+                                          <span className="text-[6px] text-white font-extrabold">{index + 1}</span>
+                                        </div>
+
+                                        {/* Intervalo acima do card */}
+                                        {intervalStr && (
+                                          <div className="absolute -top-[16px] left-2 text-[9px] text-slate-400 font-bold bg-slate-50/80 px-2 py-0.5 rounded border border-slate-100 shadow-3xs flex items-center gap-1 font-mono">
+                                            <Clock className="w-2.5 h-2.5 text-slate-400" />
+                                            {intervalStr === "Registrado em lote" ? intervalStr : `Tempo decorrido: +${intervalStr}`}
+                                          </div>
+                                        )}
+
+                                        {/* Card do processo */}
+                                        <div className="bg-white border border-slate-200/80 p-3 rounded-lg hover:shadow-xs hover:border-slate-300 transition-all">
+                                          <div className="flex justify-between items-start">
+                                            <span className="font-mono text-xs text-slate-800 font-bold break-all">
+                                              {proc.numeroProcesso}
+                                            </span>
+                                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full select-none shrink-0 ${badgeColor}`}>
+                                              {proc.origem}
+                                            </span>
+                                          </div>
+                                          <div className="flex justify-between items-center mt-1.5 pt-1.5 border-t border-dashed border-slate-100">
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                              Finalizado
+                                            </span>
+                                            <span className="text-[10px] font-extrabold text-slate-700 font-mono">
+                                              {timeStr}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
+                          </>
                         )}
                       </div>
                     </>
