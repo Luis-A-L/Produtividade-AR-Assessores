@@ -312,6 +312,7 @@ export const googleSignIn = async (): Promise<{ user: any; accessToken: string }
 }
 
 export const logout = async (): Promise<void> => {
+  localStorage.removeItem('google_provider_token')
   await _signOut()
 }
 
@@ -322,7 +323,11 @@ export const initAuth = (
   // Verificar sessão existente
   supabase.auth.getSession().then(({ data: { session } }) => {
     if (session?.user) {
-      onLogin(session.user, session.provider_token ?? null)
+      if (session.provider_token) {
+        localStorage.setItem('google_provider_token', session.provider_token)
+      }
+      const token = session.provider_token ?? localStorage.getItem('google_provider_token') ?? null
+      onLogin(session.user, token)
     } else {
       onLogout()
     }
@@ -331,8 +336,15 @@ export const initAuth = (
   // Escutar mudanças de autenticação
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     if (session?.user) {
-      onLogin(session.user, session.provider_token ?? null)
+      if (session.provider_token) {
+        localStorage.setItem('google_provider_token', session.provider_token)
+      }
+      const token = session.provider_token ?? localStorage.getItem('google_provider_token') ?? null
+      onLogin(session.user, token)
     } else {
+      if (event === 'SIGNED_OUT') {
+        localStorage.removeItem('google_provider_token')
+      }
       onLogout()
     }
   })

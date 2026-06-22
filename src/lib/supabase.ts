@@ -80,7 +80,7 @@ export const signOut = async () => {
 export const getGoogleAccessToken = async (): Promise<string | null> => {
     if (!isSupabaseConfigured) return null
     const { data } = await supabase.auth.getSession()
-    return (data.session?.provider_token) ?? null
+    return (data.session?.provider_token) ?? localStorage.getItem('google_provider_token') ?? null
 }
 
 // Retorna a sessao atual do Supabase

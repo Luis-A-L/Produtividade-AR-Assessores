@@ -2195,45 +2195,7 @@ export default function App() {
     );
   }
 
-  // 3. Tela de Bloqueio por Falta de Acesso à Planilha
-  if (spreadsheetUrl && hasSpreadsheetAccess === false) {
-    return (
-      <div className="flex min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-red-950/40 text-white items-center justify-center font-sans relative p-4 overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[45vw] h-[45vw] rounded-full bg-red-900/10 blur-[120px] pointer-events-none"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[45vw] h-[45vw] rounded-full bg-indigo-900/10 blur-[120px] pointer-events-none"></div>
 
-        <div className="w-full max-w-md bg-white/[0.03] backdrop-blur-xl border border-red-500/20 rounded-2xl p-8 sm:p-10 shadow-2xl flex flex-col items-center relative z-10 text-center">
-          <div className="w-14 h-14 bg-red-500/10 text-red-400 rounded-2xl flex items-center justify-center mb-6 border border-red-500/20">
-            <Lock className="w-6 h-6 animate-bounce" />
-          </div>
-
-          <h3 className="text-xl font-bold tracking-tight text-red-300 mb-2">Acesso Negado à Planilha</h3>
-          <p className="text-sm text-slate-400 mb-6 leading-relaxed">
-            Sua conta Google <span className="text-red-200 font-bold">{googleUser.email}</span> não tem permissão para visualizar a planilha vinculada ao sistema.
-          </p>
-
-          <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3 text-left w-full text-xs text-red-200/80 mb-8 font-mono break-all leading-normal">
-            Planilha: {spreadsheetUrl}
-          </div>
-
-          <div className="flex flex-col gap-3 w-full">
-            <button
-              onClick={() => triggerSheetsSync(spreadsheetUrl, estagiarios, true)}
-              className="w-full py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl font-bold text-xs tracking-wide transition-all border border-white/10 cursor-pointer"
-            >
-              TENTAR NOVAMENTE
-            </button>
-            <button
-              onClick={handleGoogleLogout}
-              className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs tracking-wide transition-all cursor-pointer shadow-md"
-            >
-              ENTRAR COM OUTRA CONTA GOOGLE
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans selection:bg-slate-900 selection:text-white overflow-hidden">
@@ -2405,6 +2367,39 @@ export default function App() {
 
         {/* Main Content Arena */}
           <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 w-full mx-auto flex flex-col gap-6">
+            {/* Banner de Sincronização Pausada / Erro de Planilha */}
+            {spreadsheetUrl && hasSpreadsheetAccess === false && (
+              <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-sm animate-fade-in shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-800">Sincronização com Planilha Pausada</h4>
+                    <p className="text-xs text-slate-600 mt-0.5 leading-normal">
+                      A conta <span className="font-bold text-amber-950">{googleUser?.email}</span> não pôde sincronizar com o Sheets. Verifique o link ou faça login novamente.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                  <button
+                    onClick={() => triggerSheetsSync(spreadsheetUrl, estagiarios, true)}
+                    disabled={syncingSheets}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-750 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-55"
+                  >
+                    {syncingSheets ? "Sincronizando..." : "Tentar Novamente"}
+                  </button>
+                  <button
+                    onClick={handleGoogleLogin}
+                    disabled={isLoggingInGoogle}
+                    className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer"
+                  >
+                    Reconectar Google
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Controls Bar */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
               <div className="flex items-center gap-3">
