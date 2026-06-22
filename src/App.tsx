@@ -2975,13 +2975,13 @@ export default function App() {
                             key={est.id}
                             className="bg-slate-50 hover:bg-white border border-slate-200 hover:border-indigo-300 transition-all rounded-lg p-3 flex flex-col items-center justify-center relative overflow-hidden group shadow-sm hover:shadow-md"
                           >
-                            {est.detailAnalyzed >= est.dailyGoal && (
-                              <div className="absolute top-0 inset-x-0 h-1 bg-emerald-500"></div>
-                            )}
-                            {est.detailAnalyzed > 0 &&
-                              est.detailAnalyzed < est.dailyGoal && (
-                                <div className="absolute top-0 inset-x-0 h-1 bg-indigo-400"></div>
-                              )}
+                            {est.detailAnalyzed >= est.dailyGoal ? (
+                              <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-500"></div>
+                            ) : est.detailAnalyzed >= est.dailyGoal * 0.8 ? (
+                              <div className="absolute top-0 inset-x-0 h-1.5 bg-amber-400"></div>
+                            ) : est.detailAnalyzed > 0 ? (
+                              <div className="absolute top-0 inset-x-0 h-1.5" style={{background: '#8B1A1A'}}></div>
+                            ) : null}
                             <span
                               className="text-xs font-bold text-slate-800 text-center uppercase truncate w-full"
                               title={est.name}
@@ -3169,10 +3169,10 @@ export default function App() {
                                         <span
                                           className={`font-mono text-xs font-bold ${
                                             item.goalProgressRatio >= 100
-                                              ? "text-emerald-605"
-                                              : item.goalProgressRatio >= 70
-                                                ? "text-blue-605"
-                                                : "text-amber-605"
+                                              ? "text-emerald-600"
+                                              : item.goalProgressRatio >= 80
+                                                ? "text-amber-600"
+                                                : "text-red-900"
                                           }`}
                                         >
                                           {item.goalProgressRatio}%
@@ -3186,10 +3186,10 @@ export default function App() {
                                       <span
                                         className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full ${
                                           item.status === "ALTO"
-                                            ? "bg-emerald-50 text-emerald-700 border border-emerald-250"
+                                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                             : item.status === "NORMAL"
-                                              ? "bg-blue-50 text-blue-700 border border-blue-250"
-                                              : "bg-amber-50 text-amber-700 border border-amber-250"
+                                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                              : "bg-red-950 text-red-200 border border-red-800"
                                         }`}
                                       >
                                         {item.status}
