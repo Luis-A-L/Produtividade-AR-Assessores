@@ -4509,34 +4509,52 @@ export default function App() {
             {notifications.map((notif) => (
               <motion.div
                 key={notif.id}
-                initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                initial={{ opacity: 0, y: 50, scale: 0.85 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, x: 100, scale: 0.9 }}
-                className="bg-white px-4 py-3 rounded-xl shadow-2xl border-l-4 border-indigo-500 flex items-center gap-4 w-72 pointer-events-auto"
+                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                className="bg-white p-5 rounded-2xl shadow-[0_20px_50px_rgba(99,102,241,0.18)] border-l-6 border-indigo-500 flex items-start gap-4 w-[420px] pointer-events-auto relative overflow-hidden"
               >
-                <div className="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center shrink-0">
-                  <Bell className="w-5 h-5 text-indigo-600" />
+                {/* Efeito decorativo sutil */}
+                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-full blur-2xl -mr-6 -mt-6 -z-10 opacity-60" />
+
+                {/* Ícone Destacado */}
+                <div className="h-12 w-12 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-sm">
+                  <Zap className="w-6 h-6 text-indigo-600 fill-indigo-100 animate-pulse" />
                 </div>
-                <div>
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">
-                    Novo Processo!
+
+                <div className="flex-1 pr-4">
+                  <p className="text-[10px] text-indigo-600 font-extrabold uppercase tracking-wider mb-1 flex items-center gap-1">
+                    ⚡ Novo Processo!
                   </p>
-                  <p className="text-sm font-bold text-slate-800 leading-tight">
-                    <span className="text-indigo-600">
+                  <p className="text-base font-bold text-slate-800 leading-tight">
+                    <span className="text-indigo-600 font-extrabold text-lg block mb-0.5">
                       {notif.estagiarioName}
-                    </span>{" "}
-                    finalizou!
+                    </span>
+                    <span className="text-slate-600 text-sm font-semibold">
+                      finalizou mais um processo!
+                    </span>
                   </p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                    <p className="text-xs text-slate-500 font-mono font-medium">
-                      Total hoje:{" "}
-                      <span className="font-bold text-slate-800">
-                        {notif.count}
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <p className="text-xs text-slate-600 font-semibold">
+                      Total de hoje:{" "}
+                      <span className="font-extrabold text-slate-900 bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-full text-xs">
+                        {notif.count} {notif.count === 1 ? "processo" : "processos"}
                       </span>
                     </p>
                   </div>
                 </div>
+
+                {/* Botão de Fechar Individual */}
+                <button
+                  onClick={() => {
+                    setNotifications((prevArr) => prevArr.filter((n) => n.id !== notif.id));
+                  }}
+                  className="text-slate-400 hover:text-slate-600 transition-colors p-1 cursor-pointer absolute top-3 right-3 text-lg font-bold w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-100"
+                >
+                  &times;
+                </button>
               </motion.div>
             ))}
           </AnimatePresence>
