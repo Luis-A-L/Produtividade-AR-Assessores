@@ -211,6 +211,7 @@ export default function App() {
 
   // Notifications
   const previousTodayCounts = React.useRef<Record<string, number>>({});
+  const maxNotifiedCounts = React.useRef<Record<string, number>>({});
   const [notifications, setNotifications] = useState<any[]>([]);
 
   // Pagination
@@ -1085,12 +1086,12 @@ export default function App() {
       setSheetSyncError("");
 
       // Salva automaticamente no Firestore em qualquer sincronização
-      // Se for sincronização periódica de background (sem feedback visual), salva apenas o mês atual para evitar sobrecarga e re-gravar histórico estático
+      // Se for sincronização periódica de background (sem feedback visual), salva apenas o dia de hoje para evitar sobrecarga, manter dados anteriores estáticos e economizar requisições
       let finalEntriesToSave = parseResult.entries;
       if (!showFeedback) {
-        const currentM = getCurrentMonth();
+        const todayStr = getCurrentDate();
         finalEntriesToSave = parseResult.entries.filter(
-          (e) => e.date && e.date.startsWith(currentM)
+          (e) => e.date === todayStr
         );
       }
 
@@ -1521,7 +1522,7 @@ export default function App() {
     if (!estagiarios || estagiarios.length === 0 || entries.length === 0)
       return;
 
-    const todayStr = new Date().toLocaleDateString("en-CA");
+    const todayStr = getCurrentDate();
     const currentTodayCounts = estagiarios.reduce(
       (acc, estagiario) => {
         const todayEntry = entries.find(
@@ -1533,27 +1534,37 @@ export default function App() {
       {} as Record<string, number>,
     );
 
-    if (Object.keys(previousTodayCounts.current).length > 0) {
-      for (const est of estagiarios) {
-        const prev = previousTodayCounts.current[est.id] || 0;
-        const curr = currentTodayCounts[est.id] || 0;
-        const diff = curr - prev;
+    // Inicialização silenciosa no primeiro boot para evitar notificações retroativas
+    if (Object.keys(previousTodayCounts.current).length === 0) {
+      previousTodayCounts.current = currentTodayCounts;
+      maxNotifiedCounts.current = { ...currentTodayCounts };
+      return;
+    }
 
-        if (diff > 0) {
-          const newNotif = {
-            id: Date.now() + "_" + est.id + "_" + Math.random(),
-            estagiarioName: est.name,
-            diff,
-            count: curr,
-          };
-          setNotifications((prevArr) => [...prevArr, newNotif]);
+    for (const est of estagiarios) {
+      const prev = previousTodayCounts.current[est.id] || 0;
+      const curr = currentTodayCounts[est.id] || 0;
+      const maxNotified = maxNotifiedCounts.current[est.id] || 0;
+      const diff = curr - prev;
 
-          setTimeout(() => {
-            setNotifications((prevArr) =>
-              prevArr.filter((n) => n.id !== newNotif.id),
-            );
-          }, 6000);
-        }
+      // Só notifica se a contagem subiu e se o novo valor de hoje for maior do que qualquer valor já notificado hoje
+      // Isso previne notificações repetitivas/fantasmas decorrentes de flutuações temporárias ou recargas do socket
+      if (diff > 0 && curr > maxNotified) {
+        maxNotifiedCounts.current[est.id] = curr; // Atualiza a marca histórica de notificação
+        
+        const newNotif = {
+          id: Date.now() + "_" + est.id + "_" + Math.random(),
+          estagiarioName: est.name,
+          diff,
+          count: curr,
+        };
+        setNotifications((prevArr) => [...prevArr, newNotif]);
+
+        setTimeout(() => {
+          setNotifications((prevArr) =>
+            prevArr.filter((n) => n.id !== newNotif.id),
+          );
+        }, 6000);
       }
     }
 
