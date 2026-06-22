@@ -2970,46 +2970,72 @@ export default function App() {
                       {parsedEstagiariosData
                         .slice()
                         .sort((a, b) => b.detailAnalyzed - a.detailAnalyzed)
-                        .map((est) => (
-                          <div
-                            key={est.id}
-                            className="bg-slate-50 hover:bg-white border border-slate-200 hover:border-indigo-300 transition-all rounded-lg p-3 flex flex-col items-center justify-center relative overflow-hidden group shadow-sm hover:shadow-md"
-                          >
-                            {est.detailAnalyzed >= est.dailyGoal ? (
-                              <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-500"></div>
-                            ) : est.detailAnalyzed >= est.dailyGoal * 0.8 ? (
-                              <div className="absolute top-0 inset-x-0 h-1.5 bg-amber-400"></div>
-                            ) : est.detailAnalyzed > 0 ? (
-                              <div className="absolute top-0 inset-x-0 h-1.5" style={{background: '#8B1A1A'}}></div>
-                            ) : null}
-                            <span
-                              className="text-xs font-bold text-slate-800 text-center uppercase truncate w-full"
-                              title={est.name}
+                        .map((est) => {
+                          const hasOrigens = est.detailOrigens && Object.keys(est.detailOrigens).filter(k => est.detailOrigens[k] > 0).length > 0;
+                          return (
+                            <div
+                              key={est.id}
+                              className="bg-white border border-slate-200 hover:border-indigo-300 transition-all rounded-xl flex flex-col relative overflow-hidden shadow-sm hover:shadow-md"
                             >
-                              {est.name}
-                            </span>
-                            <span
-                              className={`text-2xl font-light mt-1 ${est.detailAnalyzed > 0 ? "text-indigo-600" : "text-slate-300"}`}
-                            >
-                              {est.detailAnalyzed}
-                            </span>
-                            <span className="text-[9px] text-slate-400 font-mono mt-1 w-full text-center truncate">
-                              META: {est.dailyGoal}
-                            </span>
-                            {/* Siglas e quantidades detalhadas por origem a partir de 23/06/2026 */}
-                            {est.detailOrigens && Object.keys(est.detailOrigens).length > 0 && (
-                              <div className="flex flex-wrap items-center justify-center gap-1 mt-1.5 pt-1.5 border-t border-dashed border-slate-200 w-full select-none">
-                                {Object.entries(est.detailOrigens)
-                                  .filter(([_, val]) => val > 0)
-                                  .map(([sigla, val]) => (
-                                    <span key={sigla} className="bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded text-[8px] font-black uppercase">
-                                      {sigla}:{val}
+                              {/* Faixa de cor no topo */}
+                              {est.detailAnalyzed >= est.dailyGoal ? (
+                                <div className="h-1.5 w-full bg-emerald-500"></div>
+                              ) : est.detailAnalyzed >= est.dailyGoal * 0.8 ? (
+                                <div className="h-1.5 w-full bg-amber-400"></div>
+                              ) : est.detailAnalyzed > 0 ? (
+                                <div className="h-1.5 w-full" style={{background: '#8B1A1A'}}></div>
+                              ) : (
+                                <div className="h-1.5 w-full bg-slate-100"></div>
+                              )}
+
+                              <div className="p-3 flex flex-col flex-1">
+                                {/* Nome */}
+                                <span
+                                  className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider truncate w-full text-center"
+                                  title={est.name}
+                                >
+                                  {est.name}
+                                </span>
+
+                                {/* Total em destaque */}
+                                <div className="flex items-baseline justify-center gap-1 mt-1.5">
+                                  <span className={`text-3xl font-black leading-none ${est.detailAnalyzed > 0 ? "text-slate-800" : "text-slate-200"}`}>
+                                    {est.detailAnalyzed}
+                                  </span>
+                                  {est.detailAnalyzed > 0 && (
+                                    <span className="text-[9px] text-slate-400 font-semibold leading-none mb-0.5">
+                                      /{est.dailyGoal}
                                     </span>
-                                  ))}
+                                  )}
+                                </div>
+
+                                {/* Sem produção */}
+                                {est.detailAnalyzed === 0 && (
+                                  <span className="text-[9px] text-slate-300 text-center mt-1 font-mono">sem lançamentos</span>
+                                )}
+
+                                {/* Detalhamento por origem (quando houver) */}
+                                {hasOrigens ? (
+                                  <div className="mt-2 pt-2 border-t border-slate-100 w-full flex flex-col gap-1">
+                                    {Object.entries(est.detailOrigens)
+                                      .filter(([_, val]) => val > 0)
+                                      .sort(([, a], [, b]) => b - a)
+                                      .map(([sigla, val]) => (
+                                        <div key={sigla} className="flex items-center justify-between w-full">
+                                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">{sigla}</span>
+                                          <span className="text-[11px] font-black text-indigo-700">{val}</span>
+                                        </div>
+                                      ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-[9px] text-slate-300 font-mono text-center mt-2">
+                                    META: {est.dailyGoal}
+                                  </span>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        ))}
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
 
