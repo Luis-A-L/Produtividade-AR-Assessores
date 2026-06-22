@@ -93,60 +93,31 @@ export default function App() {
     entriesRef.current = entries;
   }, [entries]);
 
-  // Normalização de lançamentos com sufixos de origem (_cv, _rcv, etc.) para o dia 23/06/2026 em diante
+  // Normalização de lançamentos: agrupa entradas por estagiário+data (sem lógica de origem)
   const normalizedEntries = useMemo(() => {
-    const ORIGEM_MAP: Record<string, string> = {
-      cv: "CV",
-      rcv: "RCV",
-      dcv: "DCV",
-      cr: "CR",
-      rcr: "RCR",
-      dcr: "DCR",
-    };
-
     const groups: Record<string, {
       id: string;
       estagiarioId: string;
       date: string;
       count: number;
-      origens: Record<string, number>;
     }> = {};
 
     entries.forEach((e) => {
       if (!e || !e.estagiarioId || !e.date) return;
-      let realEstagiarioId = e.estagiarioId;
-      let origemKey: string | null = null;
 
-      // Siglas e divisões só passam a valer a partir de 2026-06-22
-      if (e.date >= "2026-06-22") {
-        const parts = e.estagiarioId.split("_");
-        if (parts.length > 1) {
-          const lastPart = parts[parts.length - 1].toLowerCase();
-          if (ORIGEM_MAP[lastPart]) {
-            origemKey = ORIGEM_MAP[lastPart];
-            realEstagiarioId = parts.slice(0, -1).join("_");
-          }
-        }
-      }
-
-      const key = `${realEstagiarioId}_${e.date}`;
+      const key = `${e.estagiarioId}_${e.date}`;
       if (!groups[key]) {
         groups[key] = {
           id: key,
-          estagiarioId: realEstagiarioId,
+          estagiarioId: e.estagiarioId,
           date: e.date,
           count: 0,
-          origens: {},
         };
       }
-
       groups[key].count += e.count;
-      if (origemKey && e.count > 0) {
-        groups[key].origens[origemKey] = (groups[key].origens[origemKey] || 0) + e.count;
-      }
     });
 
-    return Object.values(groups) as Array<ProductivityEntry & { origens: Record<string, number> }>;
+    return Object.values(groups) as Array<ProductivityEntry>;
   }, [entries]);
 
   const [loading, setLoading] = useState<boolean>(true);
@@ -275,9 +246,6 @@ export default function App() {
     boolean | null
   >(null);
   const [selectedDetailDate, setSelectedDetailDate] = useState<string>(getCurrentDate());
-  const [detailedProcesses, setDetailedProcesses] = useState<Record<string, { origem: string; date: string; timestamp: string }>>({});
-  const [loadingProcesses, setLoadingProcesses] = useState<boolean>(false);
-  const [detailTab, setDetailTab] = useState<"month" | "day">("month");
 
   // Notifications
   const previousTodayCounts = React.useRef<Record<string, number>>({});
@@ -373,33 +341,6 @@ export default function App() {
     }
   }, [selectedEstagiarioDetail, estagiarios]);
 
-  // Carregar processos detalhados com horario
-  useEffect(() => {
-    if (!selectedEstagiarioDetail) {
-      setDetailedProcesses({});
-      return;
-    }
-
-    const fetchDetailedProcesses = async () => {
-      setLoadingProcesses(true);
-      try {
-        const key = `proc_time_${selectedEstagiarioDetail}_${selectedMonth}`;
-        const snap = await getDoc(doc(db, "settings", key));
-        if (snap.exists()) {
-          setDetailedProcesses(snap.data() || {});
-        } else {
-          setDetailedProcesses({});
-        }
-      } catch (err) {
-        console.error("Erro ao buscar processos detalhados:", err);
-      } finally {
-        setLoadingProcesses(false);
-      }
-    };
-
-    fetchDetailedProcesses();
-    setDetailTab("month"); // Sempre abre na aba mensal por padrao
-  }, [selectedEstagiarioDetail, selectedMonth]);
 
   // Fetch Data
   const fetchData = async () => {
@@ -568,13 +509,12 @@ export default function App() {
 
     let estagiariosSheetContent = "";
     let estagiariosSheetName = "";
-    const controleSheets: { name: string; content: string }[] = [];
-    const candidateIndividualSheets: { name: string; content: string }[] = [];
+    const allControleSheets: { name: string; content: string }[] = [];
 
     // 1. Identify sheets
     Object.entries(sheets).forEach(([name, content]) => {
       const norm = normalizeText(name);
-      // Ignora abas de template/modelo (ex: MODELO GERAL) de onde não precisamos de nenhum dadd
+      // Ignora abas de template/modelo (ex: MODELO GERAL) de onde não precisamos de nenhum dado
       if (norm.includes("modelo") || norm.includes("template")) {
         return;
       }
@@ -583,14 +523,19 @@ export default function App() {
       ) {
         estagiariosSheetContent = content;
         estagiariosSheetName = name;
-      } else if (norm === "controle") {
-        // Apenas a aba de Controle
-        controleSheets.push({ name, content });
-      } else {
-        // Pode ser aba individual de estagiario
-        candidateIndividualSheets.push({ name, content });
+      } else if (norm.startsWith("controle")) {
+        // Aceita "Controle", "Controle detalhado", etc.
+        allControleSheets.push({ name, content });
       }
     });
+
+    // Priorizar "Controle detalhado" sobre "Controle" simples para evitar duplicação
+    const hasDetalhado = allControleSheets.some((s) =>
+      normalizeText(s.name).includes("detalh")
+    );
+    const controleSheets = hasDetalhado
+      ? allControleSheets.filter((s) => normalizeText(s.name).includes("detalh"))
+      : allControleSheets;
 
     const estagiariosFromSheet: Estagiario[] = [];
     const estagiariosCreatedTemp: string[] = [];
@@ -751,12 +696,6 @@ export default function App() {
     });
 
     const parsedEntries: Omit<ProductivityEntry, "id">[] = [];
-    const parsedDetailedProcesses: Array<{
-      estagiarioId: string;
-      date: string;
-      numeroProcesso: string;
-      origem: string;
-    }> = [];
 
     const findEstagiarioIdLocal = (name: string): string | null => {
       const normName = normalizeText(name);
@@ -765,97 +704,6 @@ export default function App() {
       );
       return found ? found.id : null;
     };
-
-    // Identificar abas individuais reais vinculando aos estagiarios
-    const individualSheetsProcessed: { estagiarioId: string; content: string; name: string }[] = [];
-    const individualEstagiarioIds = new Set<string>();
-
-    candidateIndividualSheets.forEach(({ name, content }) => {
-      const estagId = findEstagiarioIdLocal(name);
-      if (estagId) {
-        individualSheetsProcessed.push({ estagiarioId: estagId, content, name });
-        individualEstagiarioIds.add(estagId);
-      }
-    });
-
-    // Processar abas individuais
-    individualSheetsProcessed.forEach(({ estagiarioId, content, name }) => {
-      if (!content) return;
-      const lines = content
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-      if (lines.length <= 1) return;
-
-      const delimiter = getDelimiter(content);
-      const rows = lines.map((line) =>
-        line.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ""))
-      );
-
-      // Achar cabeçalho: Data, Nº do Processo (ou Processo), Origem
-      let dateColIdx = -1;
-      let procColIdx = -1;
-      let origemColIdx = -1;
-      let headerRowIdx = -1;
-
-      for (let r = 0; r < Math.min(rows.length, 10); r++) {
-        const row = rows[r].map((h) => normalizeText(h || ""));
-        const dIdx = row.findIndex((h) => h === "data" || h.includes("data"));
-        const pIdx = row.findIndex((h) => h.includes("processo") || h.includes("nº"));
-        const oIdx = row.findIndex((h) => h === "origem" || h.includes("origem"));
-
-        if (dIdx !== -1 && pIdx !== -1) {
-          dateColIdx = dIdx;
-          procColIdx = pIdx;
-          origemColIdx = oIdx;
-          headerRowIdx = r;
-          break;
-        }
-      }
-
-      if (dateColIdx === -1) {
-        dateColIdx = 0;
-        procColIdx = 1;
-        origemColIdx = 2;
-        headerRowIdx = 1;
-      }
-
-      const validSiglas = ["cv", "rcv", "dcv", "cr", "rcr", "dcr"];
-
-      for (let r = headerRowIdx + 1; r < rows.length; r++) {
-        const row = rows[r];
-        if (dateColIdx >= row.length) continue;
-
-        const rawDate = row[dateColIdx] || "";
-        const isoDate = parseDateToISO(rawDate);
-        if (!isoDate || isoDate < "2026-04-01") continue;
-
-        const rawProc = procColIdx !== -1 && procColIdx < row.length ? row[procColIdx].trim() : "";
-        const rawOrigem = origemColIdx !== -1 && origemColIdx < row.length ? row[origemColIdx].trim() : "";
-        const normOrigem = rawOrigem.toLowerCase();
-
-        if (!rawProc) continue;
-
-        let finalEstagiarioId = estagiarioId;
-        // As siglas passam a valer a partir de 22/06/2026 nos dados novos
-        if (isoDate >= "2026-06-22" && validSiglas.includes(normOrigem)) {
-          finalEstagiarioId = `${estagiarioId}_${normOrigem}`;
-        }
-
-        parsedEntries.push({
-          estagiarioId: finalEstagiarioId,
-          date: isoDate,
-          count: 1, // Cada linha de processo representa 1!
-        });
-
-        parsedDetailedProcesses.push({
-          estagiarioId,
-          date: isoDate,
-          numeroProcesso: rawProc,
-          origem: normOrigem.toUpperCase() || "CV",
-        });
-      }
-    });
 
     // 3. Process Controle (Cases) Sheets
     controleSheets.forEach(({ name: cName, content: cContent }) => {
@@ -870,6 +718,102 @@ export default function App() {
       const rows = lines.map((line) =>
         line.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, "")),
       );
+
+      // 3.0 Detectar formato DETALHADO ("Controle detalhado")
+      // Identifica por subcolunas de tipo como CV, RCV, DCV, CR, RCR, DCR
+      const DETAIL_TYPE_CODES = new Set(["cv", "rcv", "dcv", "cr", "rcr", "dcr"]);
+      let typesRowIdx = -1;
+      for (let i = 0; i < Math.min(8, rows.length); i++) {
+        const typeCodeCount = rows[i].filter(
+          (c) => DETAIL_TYPE_CODES.has((c || "").toLowerCase().trim())
+        ).length;
+        if (typeCodeCount >= 3) {
+          typesRowIdx = i;
+          break;
+        }
+      }
+
+      if (typesRowIdx !== -1) {
+        // === FORMATO DETALHADO (subcolunas por tipo) ===
+        console.log(`[parseSheetData] Formato DETALHADO detectado na aba "${cName}", linha de tipos: ${typesRowIdx}`);
+
+        // A linha de nomes de usuários é a anterior à linha de tipos
+        const namesRowIdx = typesRowIdx - 1;
+        if (namesRowIdx < 0) return;
+
+        const namesRow = rows[namesRowIdx];
+        const typesRow = rows[typesRowIdx];
+        const totalCols = Math.max(namesRow.length, typesRow.length);
+
+        // Forward-fill nomes de usuários (células mescladas: nome só na 1ª coluna, restante vazio)
+        let currentUserName = "";
+        const colUserMap: string[] = new Array(totalCols).fill("");
+        for (let c = 0; c < totalCols; c++) {
+          const cell = (namesRow[c] || "").trim();
+          // Atualiza nome corrente se a célula tem conteúdo e não é número puro (total) nem código de tipo
+          if (cell && !/^\d+(\.\d+)?%?$/.test(cell) && !DETAIL_TYPE_CODES.has(cell.toLowerCase())) {
+            currentUserName = cell;
+          }
+          colUserMap[c] = currentUserName;
+        }
+
+        // Mapear usuário -> lista de índices de colunas das subcolunas
+        const userColsMap: { [userId: string]: { name: string; cols: number[] } } = {};
+        for (let c = 0; c < typesRow.length; c++) {
+          const typeCode = (typesRow[c] || "").trim();
+          const userName = colUserMap[c] || "";
+          // Só processa colunas que são códigos de tipo conhecidos E têm nome de usuário
+          if (!typeCode || !DETAIL_TYPE_CODES.has(typeCode.toLowerCase())) continue;
+          if (!userName) continue;
+
+          let userId = findEstagiarioIdLocal(userName);
+          if (!userId) {
+            const generatedId = userName
+              .toLowerCase()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .replace(/\s+/g, "_")
+              .replace(/[^a-z0-9_]/g, "");
+            if (!generatedId || generatedId.length < 2) continue;
+            if (!estagiariosCreatedTemp.includes(userName))
+              estagiariosCreatedTemp.push(userName);
+            userId = generatedId;
+          }
+
+          if (!userColsMap[userId]) userColsMap[userId] = { name: userName, cols: [] };
+          userColsMap[userId].cols.push(c);
+        }
+
+        console.log(`[parseSheetData] Usuários detectados no formato detalhado:`, Object.keys(userColsMap));
+
+        // Processar linhas de dados (a partir da linha após a de tipos)
+        for (let r = typesRowIdx + 1; r < rows.length; r++) {
+          const row = rows[r];
+          // Data está na coluna 0
+          const rawDate = row[0] || "";
+          const isoDate = parseDateToISO(rawDate);
+          if (!isoDate || isoDate < "2026-04-01") continue;
+
+          Object.entries(userColsMap).forEach(([userId, { cols }]) => {
+            let total = 0;
+            cols.forEach((colIdx) => {
+              if (colIdx < row.length) {
+                const rawVal = (row[colIdx] || "").replace(/\s/g, "").replace(",", ".");
+                const num = parseFloat(rawVal);
+                if (!isNaN(num) && num > 0) total += num;
+              }
+            });
+            if (total > 0) {
+              parsedEntries.push({
+                estagiarioId: userId,
+                date: isoDate,
+                count: Math.round(total),
+              });
+            }
+          });
+        }
+        return; // Concluiu leitura desta aba no formato detalhado
+      }
 
       // 3.1 Identificar coluna de datas (aquela com maior quantidade de entradas de datas válidas)
       let dateColIdx = -1;
@@ -892,7 +836,7 @@ export default function App() {
       // Se não encontrou nenhuma coluna com datas válidas, pula esta aba
       if (dateColIdx === -1) return;
 
-      // DETEMINAÇÃO DO FORMATO
+      // DETERMINAÇÃO DO FORMATO
       // Tenta identificar se a tabela está no formato de lista flat (ex: Data, Estagiário, Quantidade)
       if (rows.length > 0) {
         const firstRows = [rows[0]];
@@ -936,6 +880,14 @@ export default function App() {
 
         if (estagiarioColIdx !== -1 && qtdColIdx !== -1 && dateColIdx !== -1) {
           // Processamento para tabela no formato FLAT LIST
+          console.log(`[parseSheetData] Formato FLAT detectado na aba "${cName}": dateCol=${dateColIdx}, nomeCol=${estagiarioColIdx}, qtdCol=${qtdColIdx}, headerRow=${headerRowIdxToSkip}`);
+          console.log(`[parseSheetData] Header detectado:`, rows[headerRowIdxToSkip]);
+          // Mostrar os primeiros 3 valores da coluna de qtd para diagnóstico
+          for (let r = headerRowIdxToSkip + 1; r < Math.min(headerRowIdxToSkip + 4, rows.length); r++) {
+            const row = rows[r];
+            console.log(`[parseSheetData] Linha ${r}: nome="${row[estagiarioColIdx]}", qtd="${row[qtdColIdx]}", date="${row[dateColIdx]}"`);
+          }
+
           for (let r = headerRowIdxToSkip + 1; r < rows.length; r++) {
             const row = rows[r];
             const rawDate = row[dateColIdx] || "";
@@ -943,14 +895,8 @@ export default function App() {
             if (!isoDate || isoDate < "2026-04-01")
               continue;
 
-            // Fim de semana não pode contabilizar (Domingo=0, Sabado=6)
-            // const checkDate = new Date(`${isoDate}T12:00:00`);
-            // const dayOfWeek = checkDate.getDay();
-            // if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-
             const estagiarioName = (row[estagiarioColIdx] || "").trim();
             const qtdStr = row[qtdColIdx];
-            const rawOrigem = origemColIdx !== -1 && origemColIdx < row.length ? row[origemColIdx].trim() : "";
             if (!estagiarioName || estagiarioName === "" || !qtdStr) continue;
 
             let estagiarioId = findEstagiarioIdLocal(estagiarioName);
@@ -967,29 +913,17 @@ export default function App() {
               estagiarioId = generatedId;
             }
 
-            // Ignora dados do controle se o estagiário já possui aba individual
-            if (individualEstagiarioIds.has(estagiarioId)) {
-              continue;
-            }
-
             const cleanedVal = qtdStr.replace(/\s/g, "").replace(",", ".");
             const parsedVal = Math.round(parseFloat(cleanedVal));
             if (!isNaN(parsedVal) && parsedVal > 0) {
-              let finalEstagiarioId = estagiarioId;
-              const normOrigem = rawOrigem.toLowerCase();
-              const validSiglas = ["cv", "rcv", "dcv", "cr", "rcr", "dcr"];
-              if (isoDate >= "2026-06-22" && validSiglas.includes(normOrigem)) {
-                finalEstagiarioId = `${estagiarioId}_${normOrigem}`;
-              }
-
               parsedEntries.push({
-                estagiarioId: finalEstagiarioId,
+                estagiarioId,
                 date: isoDate,
                 count: parsedVal,
               });
             }
           }
-          return; // Concluiu a leitura deta aba em formato flat
+          return; // Concluiu a leitura desta aba em formato flat
         }
       }
 
@@ -1142,22 +1076,6 @@ export default function App() {
         }
       });
 
-      let origemColIdx = -1;
-      nameRow.forEach((cell, cIdx) => {
-        const normCell = normalizeText(cell);
-        if (normCell === "origem" || normCell.includes("origem")) {
-          origemColIdx = cIdx;
-        }
-      });
-      if (origemColIdx === -1 && rows[0]) {
-        rows[0].forEach((cell, cIdx) => {
-          const normCell = normalizeText(cell);
-          if (normCell === "origem" || normCell.includes("origem")) {
-            origemColIdx = cIdx;
-          }
-        });
-      }
-
       // 3.4 Processar as linhas de dados (tendo data válida em `dateColIdx`)
       rows.forEach((row) => {
         if (dateColIdx >= row.length) return;
@@ -1166,29 +1084,17 @@ export default function App() {
         if (!isoDate || isoDate < "2026-04-01")
           return;
 
-        const rawOrigem = origemColIdx !== -1 && origemColIdx < row.length ? row[origemColIdx].trim() : "";
-        const normOrigem = rawOrigem.toLowerCase();
-        const validSiglas = ["cv", "rcv", "dcv", "cr", "rcr", "dcr"];
-
         mappedCols.forEach(({ colIndex, estagiarioId }) => {
-          // Ignora dados do controle se o estagiário já possui aba individual
-          if (individualEstagiarioIds.has(estagiarioId)) {
-            return;
-          }
 
           if (colIndex < row.length) {
             const rawVal = row[colIndex];
-            let finalEstagiarioId = estagiarioId;
-            if (isoDate >= "2026-06-22" && validSiglas.includes(normOrigem)) {
-              finalEstagiarioId = `${estagiarioId}_${normOrigem}`;
-            }
 
             if (rawVal) {
               const cleanedVal = rawVal.replace(/\s/g, "").replace(",", ".");
               const parsedVal = Math.round(parseFloat(cleanedVal));
               if (!isNaN(parsedVal) && parsedVal >= 0) {
                 parsedEntries.push({
-                  estagiarioId: finalEstagiarioId,
+                  estagiarioId,
                   date: isoDate,
                   count: parsedVal,
                 });
@@ -1257,7 +1163,6 @@ export default function App() {
       entries: consolidatedEntries,
       estagiariosCreated: uniqueEstagiariosCreated,
       estagiariosDetailedToCreate: estagiariosFromSheet,
-      detailedProcesses: parsedDetailedProcesses,
       message: msg,
     };
   };
@@ -1333,7 +1238,6 @@ export default function App() {
         urlStr,
         !showFeedback,
         parseResult.estagiariosDetailedToCreate || [],
-        parseResult.detailedProcesses || [],
       );
 
       if (showFeedback) {
@@ -1411,7 +1315,6 @@ export default function App() {
         spreadsheetUrl,
         false,
         parseResult.estagiariosDetailedToCreate || [],
-        parseResult.detailedProcesses || [],
       );
       showToast(
         "Dados salvos e sincronizados no banco com sucesso!",
@@ -1486,7 +1389,6 @@ export default function App() {
         spreadsheetUrl.trim(),
         true, // isStartupSilent = true
         parseResult.estagiariosDetailedToCreate || [],
-        parseResult.detailedProcesses || [],
       );
 
       alert(
@@ -1552,47 +1454,9 @@ export default function App() {
     sheetUrl: string = spreadsheetUrl,
     isStartupSilent: boolean = false,
     estagiariosDetailedToCreate: Estagiario[] = previewEstagiariosDetailed,
-    detailedProcesses: Array<{ estagiarioId: string; date: string; numeroProcesso: string; origem: string }> = [],
   ) => {
     setIsSaving(true);
     try {
-      // Gravar timestamps dos processos detalhados nas abas individuais se existirem
-      if (detailedProcesses && detailedProcesses.length > 0) {
-        const processesBySettingsKey: Record<string, typeof detailedProcesses> = {};
-        detailedProcesses.forEach((proc) => {
-          const monthKey = proc.date.substring(0, 7); // "2026-06"
-          const key = `proc_time_${proc.estagiarioId}_${monthKey}`;
-          if (!processesBySettingsKey[key]) {
-            processesBySettingsKey[key] = [];
-          }
-          processesBySettingsKey[key].push(proc);
-        });
-
-        for (const [key, procs] of Object.entries(processesBySettingsKey)) {
-          try {
-            const snap = await getDoc(doc(db, "settings", key));
-            const existingData: Record<string, { origem: string; date: string; timestamp: string }> = snap.exists() ? snap.data() || {} : {};
-            let hasChanges = false;
-
-            procs.forEach((p) => {
-              if (!existingData[p.numeroProcesso]) {
-                existingData[p.numeroProcesso] = {
-                  origem: p.origem,
-                  date: p.date,
-                  timestamp: new Date().toISOString(),
-                };
-                hasChanges = true;
-              }
-            });
-
-            if (hasChanges || !snap.exists()) {
-              await setDoc(doc(db, "settings", key), existingData);
-            }
-          } catch (procErr) {
-            console.error(`Erro ao salvar processos para chave ${key}:`, procErr);
-          }
-        }
-      }
       // 1. Upsert estagiários (usar lista detalhada se disponível, fallback para lista de nomes)
       let estagiariosToUpsert: Estagiario[] = [];
 
@@ -2146,7 +2010,6 @@ export default function App() {
         (e) => e.estagiarioId === estagiario.id && e.date === selectedDetailDate,
       );
       const detailAnalyzed = detailEntry ? detailEntry.count : 0;
-      const detailOrigens = detailEntry ? (detailEntry as any).origens : {};
 
       const role =
         estagiario.role === "pos_graduacao" ? "pos_graduacao" : "graduacao";
@@ -2181,7 +2044,6 @@ export default function App() {
         totalAnalyzed,
         todayAnalyzed,
         detailAnalyzed,
-        detailOrigens,
         daysWorked,
         averagePerDay,
         status,
@@ -3148,7 +3010,6 @@ export default function App() {
                         .slice()
                         .sort((a, b) => b.detailAnalyzed - a.detailAnalyzed)
                         .map((est) => {
-                          const hasOrigens = est.detailOrigens && Object.keys(est.detailOrigens).filter(k => est.detailOrigens[k] > 0).length > 0;
                           return (
                             <div
                               key={est.id}
@@ -3191,20 +3052,8 @@ export default function App() {
                                   <span className="text-[9px] text-slate-300 text-center mt-1 font-mono">sem lançamentos</span>
                                 )}
 
-                                {/* Detalhamento por origem (quando houver) */}
-                                {hasOrigens ? (
-                                  <div className="mt-2 pt-2 border-t border-slate-100 w-full flex flex-col gap-1">
-                                    {Object.entries(est.detailOrigens)
-                                      .filter(([_, val]) => val > 0)
-                                      .sort(([, a], [, b]) => b - a)
-                                      .map(([sigla, val]) => (
-                                        <div key={sigla} className="flex items-center justify-between w-full">
-                                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">{sigla}</span>
-                                          <span className="text-[11px] font-black text-indigo-700">{val}</span>
-                                        </div>
-                                      ))}
-                                  </div>
-                                ) : (
+                                {/* Meta */}
+                                {est.detailAnalyzed > 0 && (
                                   <span className="text-[9px] text-slate-300 font-mono text-center mt-2">
                                     META: {est.dailyGoal}
                                   </span>

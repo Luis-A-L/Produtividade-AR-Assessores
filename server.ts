@@ -266,7 +266,7 @@ async function startServer() {
       }
 
       // 2. Tentar baixar abas comuns do usuário (Controle, Estagiários, etc.)
-      const candidates = ["Controle", "Estagiatarios", "Estagiarios", "Estagiários", "Cadastro", "Membros", "Usuários"];
+      const candidates = ["Controle detalhado", "Controle", "Estagiatarios", "Estagiarios", "Estagiários", "Cadastro", "Membros", "Usuários"];
       await Promise.all(candidates.map(async (candidate) => {
         try {
           const exportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(candidate)}`;
