@@ -166,8 +166,9 @@ async function startServer() {
 
           // Buscar dados de todas as abas detectadas no arquivo real em lote (batchGet) para economizar quotas
           const rangesQuery = sheetsList
-            .map((sheet: any) => `ranges=${encodeURIComponent("'" + sheet.properties.title + "'!A1:Z2500")}`)
+            .map((sheet: any) => `ranges=${encodeURIComponent("'" + sheet.properties.title + "'!A1:BZ2500")}`)
             .join("&");
+
 
           try {
             const batchRes = await fetchWithTimeout(
