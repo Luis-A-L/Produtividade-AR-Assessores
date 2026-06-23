@@ -63,6 +63,10 @@ export const getDocs = async (ref: CollectionRef | QueryRef): Promise<{
   const filters = (ref as QueryRef).filters || []
 
   let q = supabase.from(table).select('*')
+  if (table === 'productivity_entries') {
+    // PostgREST limita por padrão a 1000 registros. Expandimos para até 10000 linhas.
+    q = q.range(0, 9999) as any
+  }
   for (const f of filters) {
     if (f?.column && f?.value !== undefined) {
       q = q.eq(f.column, f.value) as any
