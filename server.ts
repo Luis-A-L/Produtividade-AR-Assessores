@@ -20,25 +20,6 @@ const fetchWithTimeout = async (url: string, options: any = {}, timeoutMs = 2500
   }
 };
 
-function logSheetsData(sheetsResultMap: { [key: string]: string }) {
-  console.log("=== PLANILHA SINCRONIZADA ===");
-  console.log("Abas encontradas:", Object.keys(sheetsResultMap));
-  Object.entries(sheetsResultMap).forEach(([name, csv]) => {
-    console.log(`\nAba: "${name}" (${csv.length} bytes)`);
-    const lines = csv.split('\n');
-    console.log("Primeiras 6 linhas:");
-    lines.slice(0, 6).forEach((line, idx) => console.log(`  [L\${idx}]: \${line}`));
-    
-    console.log("Procurando linhas de hoje (22/06/2026):");
-    lines.forEach((line, idx) => {
-      if (line.includes("22/06/2026") || line.includes("22/6/2026") || line.includes("22/06/26") || line.includes("2026-06-22")) {
-        console.log(`  [L\${idx} MATCH]: \${line}`);
-      }
-    });
-  });
-  console.log("=============================");
-}
-
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -237,7 +218,6 @@ async function startServer() {
             console.error("[DEBUG] Erro ao salvar dados no disco:", writeErr);
           }
 
-
           return res.json({ 
             success: true, 
             sheets: sheetsResultMap, 
@@ -296,7 +276,7 @@ async function startServer() {
       }
 
       // 2. Tentar baixar abas comuns do usuário (Controle, Estagiários, etc.)
-      const candidates = ["Controle detalhado", "Controle", "Estagiatarios", "Estagiarios", "Estagiários", "Cadastro", "Membros", "Usuários"];
+      const candidates = ["Controle", "Estagiatarios", "Estagiarios", "Estagiários", "Cadastro", "Membros", "Usuários"];
       await Promise.all(candidates.map(async (candidate) => {
         try {
           const exportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(candidate)}`;
@@ -323,8 +303,6 @@ async function startServer() {
           error: "Não foi possível acessar a planilha de forma pública. Por favor, conecte com o Google para autorizar o acesso à planilha vinculada à sua conta." 
         });
       }
-
-      logSheetsData(sheetsResultMap);
 
       res.json({ 
         success: true, 
