@@ -194,6 +194,8 @@ export default function App() {
   const [sheetsMessage, setSheetsMessage] = useState<string>("");
   const [sheetSyncError, setSheetSyncError] = useState<string>("");
   const [pasteDataText, setPasteDataText] = useState<string>("");
+  const [selectedSheetName, setSelectedSheetName] = useState<string>("Controle detalhado");
+
 
   const [detailTab, setDetailTab] = useState<"month" | "day">("month");
   const [detailedProcesses, setDetailedProcesses] = useState<Record<string, { origem: string; date: string; timestamp: string }>>({});
@@ -444,6 +446,7 @@ export default function App() {
         setAutoSyncEnabled(
           settingsData.autoSync !== undefined ? settingsData.autoSync : true,
         );
+        setSelectedSheetName(settingsData.selectedSheetName || "Controle detalhado");
         setLastSyncTime(settingsData.lastSync || "");
       }
       // Não tenta criar settings se não existir — o usuário autenticado fará isso depois
@@ -460,6 +463,7 @@ export default function App() {
   const parseSheetData = (
     rawData: string | { [key: string]: string },
     currentEstagiarios: Estagiario[],
+    targetControleSheetName?: string,
   ) => {
     let diagDetalhado = false;
     let diagTypesRowIdx = -1;
@@ -608,21 +612,21 @@ export default function App() {
       ) {
         estagiariosSheetContent = content;
         estagiariosSheetName = name;
+      } else if (targetControleSheetName) {
+        if (norm === normalizeText(targetControleSheetName)) {
+          allControleSheets.push({ name, content });
+        }
       } else if (norm.startsWith("controle")) {
         // Aceita "Controle", "Controle detalhado", etc.
         allControleSheets.push({ name, content });
-      } else {
-        // Ignora outras abas para focar apenas no Controle detalhado
       }
     });
 
-    // Priorizar "Controle detalhado" sobre "Controle" simples para evitar duplicação
-    const hasDetalhado = allControleSheets.some((s) =>
-      normalizeText(s.name).includes("detalh")
-    );
-    const controleSheets = hasDetalhado
-      ? allControleSheets.filter((s) => normalizeText(s.name).includes("detalh"))
-      : allControleSheets;
+    const controleSheets = targetControleSheetName
+      ? allControleSheets
+      : (allControleSheets.some((s) => normalizeText(s.name).includes("detalh"))
+          ? allControleSheets.filter((s) => normalizeText(s.name).includes("detalh"))
+          : allControleSheets);
 
     const estagiariosFromSheet: Estagiario[] = [];
     const estagiariosCreatedTemp: string[] = [];
@@ -1440,6 +1444,7 @@ export default function App() {
       const parseResult = parseSheetData(
         resData.sheets || resData.csvText,
         activeEstagiarios,
+        selectedSheetName,
       );
 
       if (!parseResult.success) {
@@ -1529,7 +1534,7 @@ export default function App() {
       return;
     }
 
-    const parseResult = parseSheetData(pasteDataText, estagiarios);
+    const parseResult = parseSheetData(pasteDataText, estagiarios, selectedSheetName);
     if (!parseResult.success) {
       showToast(parseResult.message, "error");
       return;
@@ -1590,6 +1595,7 @@ export default function App() {
         {
           url: spreadsheetUrl.trim(),
           autoSync: autoSyncEnabled,
+          selectedSheetName: selectedSheetName.trim(),
           lastSync: nowIso,
         },
         { merge: true },
@@ -1606,6 +1612,7 @@ export default function App() {
       const parseResult = parseSheetData(
         resData.sheets || resData.csvText,
         estagiarios,
+        selectedSheetName,
       );
 
       if (!parseResult.success) {
@@ -1835,6 +1842,7 @@ export default function App() {
         {
           url: sheetUrl,
           autoSync: autoSyncEnabled,
+          selectedSheetName: selectedSheetName.trim(),
           lastSync: nowIso,
         },
         { merge: true },
@@ -4891,25 +4899,46 @@ export default function App() {
                         </div>
                       )}
 
-                      <div className="flex gap-2">
-                        <input
-                          type="url"
-                          placeholder="Cole o link do Google Sheets ou Planilha Publicada..."
-                          value={spreadsheetUrl}
-                          onChange={(e) => setSpreadsheetUrl(e.target.value)}
-                          className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:border-emerald-500 font-mono"
-                        />
-                        <button
-                          onClick={() =>
-                            triggerSheetsSync(spreadsheetUrl, estagiarios)
-                          }
-                          disabled={syncingSheets}
-                          className="bg-emerald-700 text-white hover:bg-emerald-800 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 font-sans shrink-0"
-                        >
-                          {syncingSheets
-                            ? "Sincronizando..."
-                            : "Sincronizar Já"}
-                        </button>
+                      <div className="space-y-2.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="sm:col-span-2">
+                            <label className="block text-[9px] uppercase font-bold text-emerald-800 tracking-wider mb-1">
+                              Link do Google Planilhas
+                            </label>
+                            <input
+                              type="url"
+                              placeholder="Cole o link do Google Sheets ou Planilha Publicada..."
+                              value={spreadsheetUrl}
+                              onChange={(e) => setSpreadsheetUrl(e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-350 rounded-lg text-xs outline-none focus:border-emerald-500 font-mono shadow-3xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] uppercase font-bold text-emerald-800 tracking-wider mb-1">
+                              Nome da Aba (Aba Alvo)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Ex: Controle detalhado"
+                              value={selectedSheetName}
+                              onChange={(e) => setSelectedSheetName(e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-350 rounded-lg text-xs outline-none focus:border-emerald-500 font-sans font-bold text-slate-700 shadow-3xs"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-end pt-1">
+                          <button
+                            onClick={() =>
+                              triggerSheetsSync(spreadsheetUrl, estagiarios)
+                            }
+                            disabled={syncingSheets}
+                            className="bg-emerald-700 text-white hover:bg-emerald-800 px-5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 font-sans shadow-xs"
+                          >
+                            {syncingSheets
+                              ? "Sincronizando..."
+                              : "Sincronizar Planilha Agora"}
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-emerald-100/50">
