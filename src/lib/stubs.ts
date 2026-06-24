@@ -457,3 +457,23 @@ export const subscribeToEntries = (
 
   return () => supabase.removeChannel(channel)
 }
+
+export const subscribeToSettings = (
+  onUpdate: (key: string, value: any) => void
+) => {
+  const channel = supabase
+    .channel('settings-changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'settings' },
+      (payload) => {
+        const r = payload.new as any
+        if (r && r.key) {
+          onUpdate(r.key, r.value)
+        }
+      }
+    )
+    .subscribe()
+
+  return () => supabase.removeChannel(channel)
+}
