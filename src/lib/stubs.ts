@@ -100,6 +100,7 @@ export const getDocs = async (ref: CollectionRef | QueryRef): Promise<{
           estagiarioId: rest.estagiario_id,
           date: rest.date,
           count: rest.count,
+          typeBreakdown: rest.type_breakdown ?? {},
           ...rest,
         }
       }
@@ -161,6 +162,7 @@ const mapEntryToRow = (data: Partial<ProductivityEntry>) => ({
   estagiario_id: data.estagiarioId,
   date: data.date,
   count: data.count ?? 0,
+  type_breakdown: data.typeBreakdown ?? {},
 })
 
 export const setDoc = async (ref: DocRef, data: any, options?: any): Promise<void> => {
@@ -293,6 +295,7 @@ export const batchUpsertEntries = async (items: Omit<ProductivityEntry, 'id'>[])
     estagiario_id: e.estagiarioId,
     date: e.date,
     count: e.count,
+    type_breakdown: e.typeBreakdown ?? {},
   }))
 
   // Upsert em grupos de 500

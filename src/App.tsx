@@ -1049,6 +1049,8 @@ export default function App() {
           Object.entries(userColsMap).forEach(([userId, { cols }]) => {
             if (individualEstagiarioIds.has(userId)) return;
             let total = 0;
+            const typeBreakdown: Record<string, number> = {};
+
             cols.forEach((colIdx) => {
               if (colIdx === dateColIdx) return; // Segurança extra
               if (colIdx < row.length) {
@@ -1057,10 +1059,13 @@ export default function App() {
                 if (!isNaN(num) && num > 0) {
                   total += num;
 
-                  // Pegar o tipo correspondente da coluna (CV, RCV, etc.)
+                  // Acumular por tipo (CV, RCV, DCV, CR, RCR, DCR)
                   const typeCode = (typesRow[colIdx] || "").trim().toUpperCase();
+                  if (typeCode) {
+                    typeBreakdown[typeCode] = (typeBreakdown[typeCode] || 0) + num;
+                  }
 
-                  // Gerar processos detalhados fictícios correspondentes
+                  // Gerar processos detalhados fictícios correspondentes (mantido para compatibilidade)
                   for (let i = 1; i <= num; i++) {
                     parsedDetailedProcesses.push({
                       estagiarioId: userId,
@@ -1077,6 +1082,7 @@ export default function App() {
                 estagiarioId: userId,
                 date: isoDate,
                 count: total,
+                typeBreakdown,
               });
             }
           });
@@ -2626,6 +2632,9 @@ export default function App() {
         (e) => e.estagiarioId === estagiario.id && e.date === selectedDetailDate,
       );
       const detailAnalyzed = detailEntry ? detailEntry.count : 0;
+      const detailTypeBreakdown: Record<string, number> = detailEntry?.typeBreakdown && Object.keys(detailEntry.typeBreakdown).length > 0
+        ? detailEntry.typeBreakdown
+        : {};
 
       const role =
         estagiario.role === "pos_graduacao" ? "pos_graduacao" : "graduacao";
@@ -2662,6 +2671,7 @@ export default function App() {
         totalAnalyzed,
         todayAnalyzed,
         detailAnalyzed,
+        detailTypeBreakdown,
         daysWorked,
         averagePerDay,
         status,
@@ -3699,28 +3709,27 @@ export default function App() {
                         <span className="text-[9px] text-indigo-100 font-bold mt-1 w-full text-center truncate">
                           PROCESSOS CONCLUÍDOS
                         </span>
-                        {/* Team-wide process type breakdown for today */}
+                        {/* Team-wide process type breakdown - calculado das entries dos estagiários */}
                         {(() => {
-                          const teamByOrigem: Record<string, number> = {};
-                          Object.values(allDetailedProcesses).forEach((procs) => {
-                            if (!procs) return;
-                            const dayProcs = Object.values(procs).filter((p: any) => p.date === selectedDetailDate);
-                            dayProcs.forEach((p: any) => {
-                              const o = p.origem || 'Sem origem';
-                              teamByOrigem[o] = (teamByOrigem[o] || 0) + 1;
-                            });
+                          const teamBreakdown: Record<string, number> = {};
+                          parsedEstagiariosData.forEach((est) => {
+                            if (est.detailTypeBreakdown && Object.keys(est.detailTypeBreakdown).length > 0) {
+                              Object.entries(est.detailTypeBreakdown).forEach(([tipo, qtd]) => {
+                                teamBreakdown[tipo] = (teamBreakdown[tipo] || 0) + Number(qtd);
+                              });
+                            }
                           });
                           const order = ['CV','RCV','DCV','CR','RCR','DCR'];
-                          const sorted = Object.entries(teamByOrigem).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
+                          const sorted = Object.entries(teamBreakdown).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
                           if (sorted.length === 0) return null;
                           return (
                             <div className="flex flex-wrap gap-1 justify-center mt-2 w-full border-t border-white/15 pt-2">
-                              {sorted.map(([origem, count]) => (
+                              {sorted.map(([tipo, count]) => (
                                 <span
-                                  key={origem}
+                                  key={tipo}
                                   className="text-[8px] font-black px-1.5 py-0.5 rounded bg-white/15 text-white"
                                 >
-                                  {origem}:{count}
+                                  {tipo}:{count}
                                 </span>
                               ))}
                             </div>
@@ -3807,32 +3816,28 @@ export default function App() {
                                   </span>
                                 )}
 
-                                {/* Process type breakdown for this day */}
+                                {/* Process type breakdown for this day - usando typeBreakdown da entry */}
                                 {(() => {
-                                  const procs = allDetailedProcesses[est.id];
-                                  if (!procs) return null;
-                                  const dayProcs = Object.values(procs).filter((p: any) => p.date === selectedDetailDate);
-                                  if (dayProcs.length === 0) return null;
-                                  const byOrigem: Record<string, number> = {};
-                                  dayProcs.forEach((p: any) => {
-                                    const o = p.origem || 'Sem origem';
-                                    byOrigem[o] = (byOrigem[o] || 0) + 1;
-                                  });
+                                  const breakdown = est.detailTypeBreakdown;
+                                  if (!breakdown || Object.keys(breakdown).length === 0) return null;
                                   const ORIGEM_COLORS: Record<string, string> = {
                                     CV: '#2563eb', RCV: '#3b82f6', DCV: '#60a5fa',
                                     CR: '#7c3aed', RCR: '#8b5cf6', DCR: '#a78bfa',
                                   };
                                   const order = ['CV','RCV','DCV','CR','RCR','DCR'];
-                                  const sorted = Object.entries(byOrigem).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
+                                  const sorted = Object.entries(breakdown)
+                                    .filter(([, v]) => Number(v) > 0)
+                                    .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b)) as [string, number][];
+                                  if (sorted.length === 0) return null;
                                   return (
-                                    <div className="flex flex-wrap gap-1 justify-center mt-1.5">
-                                      {sorted.map(([origem, count]) => (
+                                    <div className="flex flex-wrap gap-1 justify-center mt-2 border-t border-slate-100 pt-2">
+                                      {sorted.map(([tipo, count]) => (
                                         <span
-                                          key={origem}
+                                          key={tipo}
                                           className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                                          style={{ backgroundColor: (ORIGEM_COLORS[origem] || '#94a3b8') + '20', color: ORIGEM_COLORS[origem] || '#94a3b8' }}
+                                          style={{ backgroundColor: (ORIGEM_COLORS[tipo] || '#94a3b8') + '22', color: ORIGEM_COLORS[tipo] || '#94a3b8', border: `1px solid ${(ORIGEM_COLORS[tipo] || '#94a3b8')}44` }}
                                         >
-                                          {origem}:{count}
+                                          {tipo}:{count}
                                         </span>
                                       ))}
                                     </div>
