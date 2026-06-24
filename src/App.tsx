@@ -3709,16 +3709,28 @@ export default function App() {
                         <span className="text-[9px] text-indigo-100 font-bold mt-1 w-full text-center truncate">
                           PROCESSOS CONCLUÍDOS
                         </span>
-                        {/* Team-wide process type breakdown - calculado das entries dos estagiários */}
+                        {/* Team-wide process type breakdown - prioriza typeBreakdown das entries, fallback em allDetailedProcesses */}
                         {(() => {
                           const teamBreakdown: Record<string, number> = {};
+
+                          // Prioridade 1: somar typeBreakdown das entries de cada estagiário
                           parsedEstagiariosData.forEach((est) => {
                             if (est.detailTypeBreakdown && Object.keys(est.detailTypeBreakdown).length > 0) {
                               Object.entries(est.detailTypeBreakdown).forEach(([tipo, qtd]) => {
                                 teamBreakdown[tipo] = (teamBreakdown[tipo] || 0) + Number(qtd);
                               });
+                            } else {
+                              // Fallback: allDetailedProcesses para dados antigos
+                              const procs = allDetailedProcesses[est.id];
+                              if (procs) {
+                                Object.values(procs).filter((p: any) => p.date === selectedDetailDate).forEach((p: any) => {
+                                  const o = p.origem || 'CV';
+                                  teamBreakdown[o] = (teamBreakdown[o] || 0) + 1;
+                                });
+                              }
                             }
                           });
+
                           const order = ['CV','RCV','DCV','CR','RCR','DCR'];
                           const sorted = Object.entries(teamBreakdown).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
                           if (sorted.length === 0) return null;
@@ -3816,10 +3828,24 @@ export default function App() {
                                   </span>
                                 )}
 
-                                {/* Process type breakdown for this day - usando typeBreakdown da entry */}
+                                {/* Process type breakdown for this day - usando typeBreakdown da entry (ou allDetailedProcesses como fallback) */}
                                 {(() => {
-                                  const breakdown = est.detailTypeBreakdown;
-                                  if (!breakdown || Object.keys(breakdown).length === 0) return null;
+                                  // Prioridade 1: breakdown direto da entry (fonte única e consistente)
+                                  let breakdown: Record<string, number> = est.detailTypeBreakdown ?? {};
+
+                                  // Fallback: usar allDetailedProcesses para dados antigos sem typeBreakdown
+                                  if (Object.keys(breakdown).length === 0) {
+                                    const procs = allDetailedProcesses[est.id];
+                                    if (procs) {
+                                      const dayProcs = Object.values(procs).filter((p: any) => p.date === selectedDetailDate);
+                                      dayProcs.forEach((p: any) => {
+                                        const o = p.origem || 'CV';
+                                        breakdown[o] = (breakdown[o] || 0) + 1;
+                                      });
+                                    }
+                                  }
+
+                                  if (Object.keys(breakdown).length === 0) return null;
                                   const ORIGEM_COLORS: Record<string, string> = {
                                     CV: '#2563eb', RCV: '#3b82f6', DCV: '#60a5fa',
                                     CR: '#7c3aed', RCR: '#8b5cf6', DCR: '#a78bfa',
