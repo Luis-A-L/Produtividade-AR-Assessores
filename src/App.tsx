@@ -1769,6 +1769,35 @@ export default function App() {
               console.error(`Erro ao salvar processos para chave ${key}:`, procErr);
             }
           }
+
+          // Atualiza o estado local allDetailedProcesses para refletir os dados novos imediatamente sem refresh
+          setAllDetailedProcesses((prev) => {
+            const next = { ...prev };
+            Object.entries(processesBySettingsKey).forEach(([key, procs]) => {
+              const parts = key.split("_");
+              if (parts.length >= 3) {
+                const estId = parts.slice(2, parts.length - 1).join("_");
+                if (!next[estId]) next[estId] = {};
+
+                if (!isStartupSilent) {
+                  const newMap: Record<string, { origem: string; date: string }> = {};
+                  procs.forEach((p) => {
+                    newMap[p.numeroProcesso] = { origem: p.origem, date: p.date };
+                  });
+                  next[estId] = newMap;
+                } else {
+                  const existingMap = { ...next[estId] };
+                  procs.forEach((p) => {
+                    if (!existingMap[p.numeroProcesso]) {
+                      existingMap[p.numeroProcesso] = { origem: p.origem, date: p.date };
+                    }
+                  });
+                  next[estId] = existingMap;
+                }
+              }
+            });
+            return next;
+          });
         }
       // 1. Upsert estagiários (usar lista detalhada se disponível, fallback para lista de nomes)
       let estagiariosToUpsert: Estagiario[] = [];
@@ -3553,6 +3582,33 @@ export default function App() {
                         <span className="text-[9px] text-indigo-100 font-bold mt-1 w-full text-center truncate">
                           PROCESSOS CONCLUÍDOS
                         </span>
+                        {/* Team-wide process type breakdown for today */}
+                        {(() => {
+                          const teamByOrigem: Record<string, number> = {};
+                          Object.values(allDetailedProcesses).forEach((procs) => {
+                            if (!procs) return;
+                            const dayProcs = Object.values(procs).filter((p: any) => p.date === selectedDetailDate);
+                            dayProcs.forEach((p: any) => {
+                              const o = p.origem || 'Sem origem';
+                              teamByOrigem[o] = (teamByOrigem[o] || 0) + 1;
+                            });
+                          });
+                          const order = ['CV','RCV','DCV','CR','RCR','DCR'];
+                          const sorted = Object.entries(teamByOrigem).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
+                          if (sorted.length === 0) return null;
+                          return (
+                            <div className="flex flex-wrap gap-1 justify-center mt-2 w-full border-t border-white/15 pt-2">
+                              {sorted.map(([origem, count]) => (
+                                <span
+                                  key={origem}
+                                  className="text-[8px] font-black px-1.5 py-0.5 rounded bg-white/15 text-white"
+                                >
+                                  {origem}:{count}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {parsedEstagiariosData

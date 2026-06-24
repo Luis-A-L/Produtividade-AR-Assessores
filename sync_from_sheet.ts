@@ -15,7 +15,7 @@ import { readFileSync } from 'fs';
 
 // ─── CONFIGURAÇÕES ───────────────────────────────────────────
 const SPREADSHEET_ID = '1hTAx1DO1x4rI8vJ0IQUKEyZqrws2FtcJMSPwFtt-r78';
-const SHEET_NAME     = 'Controle';            // Nome exato da aba
+const SHEET_NAME     = 'Controle detalhado';            // Nome exato da aba
 const DATE_FROM      = '2026-06-01';
 const DATE_TO        = '2026-06-19';
 
