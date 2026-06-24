@@ -182,6 +182,7 @@ export default function App() {
   const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(true);
   const [lastSyncTime, setLastSyncTime] = useState<string>("");
   const [syncingSheets, setSyncingSheets] = useState<boolean>(false);
+  const [syncDuration, setSyncDuration] = useState<number>(0);
   const [previewEntries, setPreviewEntries] = useState<
     Omit<ProductivityEntry, "id">[]
   >([]);
@@ -913,7 +914,7 @@ export default function App() {
       // Identifica por subcolunas de tipo como CV, RCV, DCV, CR, RCR, DCR
       const DETAIL_TYPE_CODES = new Set(["cv", "rcv", "dcv", "cr", "rcr", "dcr"]);
       let typesRowIdx = -1;
-      for (let i = 0; i < Math.min(8, rows.length); i++) {
+      for (let i = 0; i < Math.min(15, rows.length); i++) {
         const typeCodeCount = rows[i].filter(
           (c) => DETAIL_TYPE_CODES.has((c || "").toLowerCase().trim())
         ).length;
@@ -1437,8 +1438,14 @@ export default function App() {
       return;
     }
 
+    let timerId: any = null;
     if (showFeedback) {
       setSyncingSheets(true);
+      setSyncDuration(0);
+      const startTime = Date.now();
+      timerId = setInterval(() => {
+        setSyncDuration((Date.now() - startTime) / 1000);
+      }, 100);
       setSheetsMessage("Iniciando conexão de sincronização...");
     }
     setSheetSyncError("");
@@ -1532,6 +1539,7 @@ export default function App() {
         alert(`Falha na sincronização em tempo real: ${errMsg}`);
       }
     } finally {
+      if (timerId) clearInterval(timerId);
       if (showFeedback) setSyncingSheets(false);
     }
   };
@@ -1599,6 +1607,11 @@ export default function App() {
 
     setIsSaving(true);
     setSyncingSheets(true);
+    setSyncDuration(0);
+    const startTime = Date.now();
+    const timerId = setInterval(() => {
+      setSyncDuration((Date.now() - startTime) / 1000);
+    }, 100);
     setSheetsMessage("Configurando vínculo e importando dados da planilha...");
     try {
       const nowIso = new Date().toISOString();
@@ -1667,6 +1680,7 @@ export default function App() {
       );
       setSheetSyncError(err.message || "");
     } finally {
+      if (timerId) clearInterval(timerId);
       setIsSaving(false);
       setSyncingSheets(false);
     }
@@ -3173,7 +3187,7 @@ export default function App() {
                     disabled={syncingSheets}
                     className="px-3 py-1.5 bg-amber-600 hover:bg-amber-750 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-55"
                   >
-                    {syncingSheets ? "Sincronizando..." : "Tentar Novamente"}
+                    {syncingSheets ? `Sincronizando (${syncDuration.toFixed(1)}s)...` : "Tentar Novamente"}
                   </button>
                   <button
                     onClick={handleGoogleLogin}
@@ -5195,7 +5209,7 @@ export default function App() {
                             className="bg-emerald-700 text-white hover:bg-emerald-800 px-5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 font-sans shadow-xs"
                           >
                             {syncingSheets
-                              ? "Sincronizando..."
+                              ? `Sincronizando (${syncDuration.toFixed(1)}s)...`
                               : "Sincronizar Planilha Agora"}
                           </button>
                         </div>
@@ -5236,7 +5250,7 @@ export default function App() {
                             className="bg-slate-900 text-white hover:bg-slate-800 px-3.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer disabled:opacity-55"
                           >
                             {isSaving
-                              ? "Gravando e Sincronizando..."
+                              ? `Gravando e Sincronizando (${syncDuration.toFixed(1)}s)...`
                               : "Salvar Vínculo"}
                           </button>
                         </div>
