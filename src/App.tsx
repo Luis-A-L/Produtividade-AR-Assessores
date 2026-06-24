@@ -183,6 +183,22 @@ export default function App() {
   const [lastSyncTime, setLastSyncTime] = useState<string>("");
   const [syncingSheets, setSyncingSheets] = useState<boolean>(false);
   const [syncDuration, setSyncDuration] = useState<number>(0);
+  const [lastSyncDuration, setLastSyncDuration] = useState<number | null>(null);
+
+  const formatLastSyncTime = (isoString: string) => {
+    if (!isoString) return "";
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch (e) {
+      return "";
+    }
+  };
+
   const [previewEntries, setPreviewEntries] = useState<
     Omit<ProductivityEntry, "id">[]
   >([]);
@@ -1439,13 +1455,14 @@ export default function App() {
     }
 
     let timerId: any = null;
+    setSyncingSheets(true);
+    setSyncDuration(0);
+    const startTime = Date.now();
+    timerId = setInterval(() => {
+      setSyncDuration((Date.now() - startTime) / 1000);
+    }, 100);
+
     if (showFeedback) {
-      setSyncingSheets(true);
-      setSyncDuration(0);
-      const startTime = Date.now();
-      timerId = setInterval(() => {
-        setSyncDuration((Date.now() - startTime) / 1000);
-      }, 100);
       setSheetsMessage("Iniciando conexão de sincronização...");
     }
     setSheetSyncError("");
@@ -1501,6 +1518,10 @@ export default function App() {
         finalDetailedProcesses,
       );
 
+      const endTime = Date.now();
+      const duration = (endTime - startTime) / 1000;
+      setLastSyncDuration(duration);
+
       if (showFeedback) {
         setIsSheetsModalOpen(true);
       }
@@ -1540,7 +1561,7 @@ export default function App() {
       }
     } finally {
       if (timerId) clearInterval(timerId);
-      if (showFeedback) setSyncingSheets(false);
+      setSyncingSheets(false);
     }
   };
 
@@ -1661,6 +1682,10 @@ export default function App() {
         parseResult.estagiariosDetailedToCreate || [],
         parseResult.detailedProcesses || [],
       );
+
+      const endTime = Date.now();
+      const duration = (endTime - startTime) / 1000;
+      setLastSyncDuration(duration);
 
       alert(
         `A planilha foi vinculada e sincronizada com sucesso! Foram salvos ${parseResult.entries.length} lançamentos de produtividade no banco de dados. ` +
@@ -3556,7 +3581,20 @@ export default function App() {
                       <h2 className="text-sm font-bold tracking-tight text-indigo-900 flex items-center gap-2">
                         <Zap className="w-4 h-4 text-emerald-500 animate-pulse" />
                         {selectedDetailDate === getCurrentDate() ? (
-                          <span>FEITO HOJE — TEMPO REAL</span>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
+                            <span>FEITO HOJE — TEMPO REAL</span>
+                            {syncingSheets ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full shadow-sm animate-pulse">
+                                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping"></span>
+                                Sincronizando ({syncDuration.toFixed(1)}s)...
+                              </span>
+                            ) : lastSyncTime ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shadow-sm">
+                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                                Sincronizado: {formatLastSyncTime(lastSyncTime)} {lastSyncDuration !== null ? `(${lastSyncDuration.toFixed(1)}s)` : ""}
+                              </span>
+                            ) : null}
+                          </div>
                         ) : (
                           <span>PRODUTIVIDADE EM {selectedDetailDate.split("-").reverse().join("/")}</span>
                         )}
