@@ -476,7 +476,8 @@ export default function App() {
         setAutoSyncEnabled(
           settingsData.autoSync !== undefined ? settingsData.autoSync : true,
         );
-        setSelectedSheetName(settingsData.selectedSheetName || "Controle detalhado");
+        // Sempre usa "Controle detalhado" — ignorar valor antigo "Controle" do banco
+        setSelectedSheetName("Controle detalhado");
         setLastSyncTime(settingsData.lastSync || "");
       }
 
@@ -2013,7 +2014,8 @@ export default function App() {
       } else if (key === "googleSheet") {
         setSpreadsheetUrl(value?.url || DEFAULT_SHEET_URL);
         setAutoSyncEnabled(value?.autoSync !== undefined ? value.autoSync : true);
-        setSelectedSheetName(value?.selectedSheetName || "Controle detalhado");
+        // Sempre usa "Controle detalhado" para a aba, ignorando valor antigo do banco
+        setSelectedSheetName("Controle detalhado");
         setLastSyncTime(value?.lastSync || "");
       }
     });
