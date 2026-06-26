@@ -2012,7 +2012,7 @@ export default function App() {
             );
             if (idx !== -1) {
               // Mantém o ID original do banco para consistência
-              next[idx] = { ...next[idx], count: newEntry.count };
+              next[idx] = { ...next[idx], count: newEntry.count, typeBreakdown: newEntry.typeBreakdown };
             } else {
               // Adiciona temporariamente sem ID (o Realtime Socket atualizará o ID definitivo do banco logo em seguida)
               next.push({
@@ -3092,7 +3092,7 @@ export default function App() {
     return Object.entries(PROCESS_TYPES)
       .map(([key, meta]) => ({ name: meta.label, value: counts[key] || 0, fill: meta.fill }))
       .filter((x) => x.value > 0);
-  }, [parsedEstagiariosData, allDetailedProcesses, selectedMonth, normalizedEntries]);
+  }, [parsedEstagiariosData, selectedMonth, normalizedEntries]);
 
   // List of all active month entries sorted chronologically (newest first)
   const chronologicalEntries = useMemo(() => {
