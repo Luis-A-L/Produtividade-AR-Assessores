@@ -1050,6 +1050,11 @@ export default function App() {
 
         // Mapear usuário -> lista de índices de colunas das subcolunas
         const userColsMap: { [userId: string]: { name: string; cols: number[] } } = {};
+        console.log(`[DEBUG] Tipos detectados na aba "${cName}":`, typesRow.filter(c => {
+          const norm = normalizeTypeCode(c || "");
+          return norm && DETAIL_TYPE_CODES.has(norm);
+        }).join(", "));
+        console.log(`[DEBUG] Todos os cabeçalhos da linha de tipos:`, typesRow);
         for (let c = 0; c < typesRow.length; c++) {
           if (c === dateColIdx) continue; // Ignorar explicitamente a coluna de data para evitar parsing indevido
           const typeCode = (typesRow[c] || "").trim();
