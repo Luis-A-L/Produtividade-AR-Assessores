@@ -969,14 +969,20 @@ export default function App() {
 
       debugRows = rows.slice(0, 10);
 
+      const normalizeTypeCode = (code: string): string => {
+        return (code || "")
+          .replace(/[^a-zA-Z]/g, "")
+          .toUpperCase();
+      };
+
       // 3.0 Detectar formato DETALHADO ("Controle detalhado")
-      // Identifica por subcolunas de tipo como CV, RCV, DCV, CR, RCR, DCR, REDCV, REDCR
-      const DETAIL_TYPE_CODES = new Set(["cv", "rcv", "dcv", "cr", "rcr", "dcr", "redcv", "redcr", "revcr"]);
+      // Identifica por subcolunas de tipo como CV, RCV, DCV, CR, RCR, DCR, REDCV, REDCR, REVCR
+      const DETAIL_TYPE_CODES = new Set(["CV", "RCV", "DCV", "CR", "RCR", "DCR", "REDCV", "REDCR", "REVCR"]);
       let typesRowIdx = -1;
       let maxTypeCodeCount = -1;
       for (let i = 0; i < Math.min(15, rows.length); i++) {
         const typeCodeCount = rows[i].filter(
-          (c) => DETAIL_TYPE_CODES.has((c || "").toLowerCase().trim())
+          (c) => DETAIL_TYPE_CODES.has(normalizeTypeCode(c || ""))
         ).length;
         if (typeCodeCount >= 3 && typeCodeCount > maxTypeCodeCount) {
           maxTypeCodeCount = typeCodeCount;
@@ -997,7 +1003,7 @@ export default function App() {
           const row = rows[r];
           const textCellCount = row.filter((c) => {
             const trimmed = (c || "").trim();
-            return trimmed && !/^\d+(\.\d+)?%?$/.test(trimmed) && !DETAIL_TYPE_CODES.has(trimmed.toLowerCase());
+            return trimmed && !/^\d+(\.\d+)?%?$/.test(trimmed) && !DETAIL_TYPE_CODES.has(normalizeTypeCode(trimmed));
           }).length;
           if (textCellCount >= 3) {
             namesRowIdx = r;
@@ -1015,7 +1021,7 @@ export default function App() {
         for (let c = 0; c < totalCols; c++) {
           const cell = (namesRow[c] || "").trim();
           // Atualiza nome corrente se a célula tem conteúdo e não é número puro (total) nem código de tipo
-          if (cell && !/^\d+(\.\d+)?%?$/.test(cell) && !DETAIL_TYPE_CODES.has(cell.toLowerCase())) {
+          if (cell && !/^\d+(\.\d+)?%?$/.test(cell) && !DETAIL_TYPE_CODES.has(normalizeTypeCode(cell))) {
             currentUserName = cell;
           }
           colUserMap[c] = currentUserName;
@@ -1047,9 +1053,10 @@ export default function App() {
         for (let c = 0; c < typesRow.length; c++) {
           if (c === dateColIdx) continue; // Ignorar explicitamente a coluna de data para evitar parsing indevido
           const typeCode = (typesRow[c] || "").trim();
+          const typeCodeNorm = normalizeTypeCode(typeCode);
           const userName = colUserMap[c] || "";
           // Só processa colunas que são códigos de tipo conhecidos E têm nome de usuário
-          if (!typeCode || !DETAIL_TYPE_CODES.has(typeCode.toLowerCase())) continue;
+          if (!typeCode || !DETAIL_TYPE_CODES.has(typeCodeNorm)) continue;
           if (!userName) continue;
 
           let userId = findEstagiarioIdLocal(userName);
@@ -1104,8 +1111,8 @@ export default function App() {
                 if (!isNaN(num) && num > 0) {
                   total += num;
 
-                  // Acumular por tipo (CV, RCV, DCV, CR, RCR, DCR)
-                  const typeCode = (typesRow[colIdx] || "").trim().toUpperCase();
+                  // Acumular por tipo (CV, RCV, DCV, CR, RCR, DCR, REDCV, REDCR, REVCR)
+                  const typeCode = normalizeTypeCode(typesRow[colIdx] || "");
                   if (typeCode) {
                     typeBreakdown[typeCode] = (typeBreakdown[typeCode] || 0) + num;
                   }
@@ -2972,18 +2979,7 @@ export default function App() {
       
       if (e.typeBreakdown) {
         Object.entries(e.typeBreakdown).forEach(([type, count]) => {
-          let targetType = type;
-          if (type === "CV" || type === "RCV" || type === "REDCV") {
-            targetType = "CV";
-          } else if (type === "CR" || type === "RCR") {
-            targetType = "CR";
-          } else if (type === "DCV") {
-            targetType = "DCV";
-          } else if (type === "REDCR" || type === "DCR") {
-            targetType = "REDCR";
-          } else if (type === "REVCR") {
-            targetType = "REVCR";
-          }
+          const targetType = type.toUpperCase();
           typeBreakdownMap[e.estagiarioId][targetType] = (typeBreakdownMap[e.estagiarioId][targetType] || 0) + Number(count);
         });
       }
@@ -2991,8 +2987,12 @@ export default function App() {
 
     const emojiMap: Record<string, string> = {
       CV: "🔵",
-      CR: "🟣",
+      RCV: "🔵",
       DCV: "🟡",
+      CR: "🟣",
+      RCR: "🟣",
+      DCR: "🔴",
+      REDCV: "🔴",
       REDCR: "🔴",
       REVCR: "🔴",
     };
@@ -3016,7 +3016,7 @@ export default function App() {
           })
           .filter((b) => b.pct > 0);
 
-        const order = ["CV", "CR", "DCV", "REDCV", "REDCR", "REVCR"];
+        const order = ["CV", "RCV", "DCV", "CR", "RCR", "DCR", "REDCV", "REDCR", "REVCR"];
         breakdown.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
 
         return {
@@ -3063,32 +3063,17 @@ export default function App() {
     const counts: Record<string, number> = {};
     Object.keys(PROCESS_TYPES).forEach(t => { counts[t] = 0; });
 
-    // Agrega de normalizedEntries (typeBreakdown) — fonte principal
-    const monthEntries = normalizedEntries.filter((e) =>
-      e.date.startsWith(selectedMonth),
-    );
-    let hasTypeBreakdown = false;
-    monthEntries.forEach((e) => {
-      if (e.typeBreakdown && Object.keys(e.typeBreakdown).length > 0) {
-        hasTypeBreakdown = true;
-        Object.entries(e.typeBreakdown).forEach(([tipo, qtd]) => {
-          const key = tipo.toUpperCase();
-          if (counts[key] !== undefined) counts[key] += Number(qtd);
-        });
-      }
-    });
-
-    // Fallback: allDetailedProcesses para dados antigos sem typeBreakdown
-    if (!hasTypeBreakdown) {
-      Object.values(allDetailedProcesses).forEach(procMap => {
-        Object.values(procMap).forEach((proc: any) => {
-          if (proc.date && proc.date.startsWith(selectedMonth) && proc.origem) {
-            const tipo = (proc.origem as string).toUpperCase();
-            if (counts[tipo] !== undefined) counts[tipo] += 1;
-          }
-        });
+    // Agrega de normalizedEntries (typeBreakdown) — única fonte
+    normalizedEntries
+      .filter((e) => e.date.startsWith(selectedMonth))
+      .forEach((e) => {
+        if (e.typeBreakdown) {
+          Object.entries(e.typeBreakdown).forEach(([tipo, qtd]) => {
+            const key = tipo.toUpperCase();
+            if (counts[key] !== undefined) counts[key] += Number(qtd);
+          });
+        }
       });
-    }
 
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -3107,7 +3092,7 @@ export default function App() {
     return Object.entries(PROCESS_TYPES)
       .map(([key, meta]) => ({ name: meta.label, value: counts[key] || 0, fill: meta.fill }))
       .filter((x) => x.value > 0);
-  }, [parsedEstagiariosData, allDetailedProcesses, selectedMonth]);
+  }, [parsedEstagiariosData, allDetailedProcesses, selectedMonth, normalizedEntries]);
 
   // List of all active month entries sorted chronologically (newest first)
   const chronologicalEntries = useMemo(() => {
@@ -3816,11 +3801,13 @@ export default function App() {
                               data={distributionChartData}
                               cx="50%"
                               cy="50%"
-                              innerRadius={60}
-                              outerRadius={80}
+                              innerRadius={45}
+                              outerRadius={65}
                               paddingAngle={5}
                               dataKey="value"
                               stroke="none"
+                              label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                              labelLine={true}
                             >
                               {distributionChartData.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={entry.fill} />
@@ -3859,7 +3846,7 @@ export default function App() {
                               <div key={index} className="flex items-center gap-1.5">
                                 <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: entry.fill }}></div>
                                 <span className="text-[10px] font-semibold text-slate-600">
-                                  {entry.name} {entry.value}
+                                  {entry.name} {entry.value} ({pct}%)
                                 </span>
                               </div>
                             );
