@@ -3063,15 +3063,32 @@ export default function App() {
     const counts: Record<string, number> = {};
     Object.keys(PROCESS_TYPES).forEach(t => { counts[t] = 0; });
 
-    // Agrega de allDetailedProcesses para o mês selecionado
-    Object.values(allDetailedProcesses).forEach(procMap => {
-      Object.values(procMap).forEach((proc: any) => {
-        if (proc.date && proc.date.startsWith(selectedMonth) && proc.origem) {
-          const tipo = (proc.origem as string).toUpperCase();
-          if (counts[tipo] !== undefined) counts[tipo] += 1;
-        }
-      });
+    // Agrega de normalizedEntries (typeBreakdown) — fonte principal
+    const monthEntries = normalizedEntries.filter((e) =>
+      e.date.startsWith(selectedMonth),
+    );
+    let hasTypeBreakdown = false;
+    monthEntries.forEach((e) => {
+      if (e.typeBreakdown && Object.keys(e.typeBreakdown).length > 0) {
+        hasTypeBreakdown = true;
+        Object.entries(e.typeBreakdown).forEach(([tipo, qtd]) => {
+          const key = tipo.toUpperCase();
+          if (counts[key] !== undefined) counts[key] += Number(qtd);
+        });
+      }
     });
+
+    // Fallback: allDetailedProcesses para dados antigos sem typeBreakdown
+    if (!hasTypeBreakdown) {
+      Object.values(allDetailedProcesses).forEach(procMap => {
+        Object.values(procMap).forEach((proc: any) => {
+          if (proc.date && proc.date.startsWith(selectedMonth) && proc.origem) {
+            const tipo = (proc.origem as string).toUpperCase();
+            if (counts[tipo] !== undefined) counts[tipo] += 1;
+          }
+        });
+      });
+    }
 
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
