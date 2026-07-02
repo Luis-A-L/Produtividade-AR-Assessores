@@ -17,13 +17,13 @@ import {
   initAuth,
   getAccessToken,
   seedDatabaseIfEmpty,
-  batchUpsertEstagiarios,
+  batchUpsertAssessores as batchUpsertEstagiarios,
   batchUpsertEntries,
-  subscribeToEstagiarios,
+  subscribeToAssessores as subscribeToEstagiarios,
   subscribeToSettings,
 } from "./lib/stubs";
 import { fetchSheetDataDirectly, getSession, supabase } from "./lib/supabase";
-import { Estagiario, ProductivityEntry, INITIAL_ESTAGIARIOS } from "./lib/types";
+import { Assessor as Estagiario, ProductivityEntry, INITIAL_ASSESSORES as INITIAL_ESTAGIARIOS } from "./lib/types";
 import {
   BarChart,
   Bar,
@@ -165,7 +165,7 @@ export default function App() {
   const [newEstagiarioName, setNewEstagiarioName] = useState<string>("");
   const [newEstagiarioId, setNewEstagiarioId] = useState<string>("");
   const [newEstagiarioRole, setNewEstagiarioRole] =
-    useState<string>("graduacao");
+    useState<string>("público");
   const [newEstagiarioDailyGoal, setNewEstagiarioDailyGoal] =
     useState<number>(25);
   const [newEstagiarioMatricula, setNewEstagiarioMatricula] =
@@ -175,7 +175,7 @@ export default function App() {
   const [isEditingCadastre, setIsEditingCadastre] = useState<boolean>(false);
   const [editEstagiarioName, setEditEstagiarioName] = useState<string>("");
   const [editEstagiarioRole, setEditEstagiarioRole] =
-    useState<string>("graduacao");
+    useState<string>("público");
   const [editEstagiarioDailyGoal, setEditEstagiarioDailyGoal] =
     useState<number>(25);
   const [editEstagiarioMatricula, setEditEstagiarioMatricula] =
@@ -376,10 +376,10 @@ export default function App() {
       if (detailed) {
         setEditEstagiarioName(detailed.name);
         setEditEstagiarioRole(
-          detailed.role === "pos_graduacao" ? "pos_graduacao" : "graduacao",
+          detailed.sector || "público",
         );
         setEditEstagiarioDailyGoal(
-          detailed.dailyGoal ?? (detailed.role === "pos_graduacao" ? 30 : 25),
+          detailed.dailyGoal ?? 25,
         );
       }
       setIsEditingCadastre(false);
@@ -786,25 +786,21 @@ export default function App() {
               ? cells[goalColIdx]
               : "";
 
-          let parsedRole = "graduacao";
+          let parsedSector: "público" | "privado 1" | "privado 2" | "privado 3" | "crime" = "público";
           const normRole = normalizeText(rawRole);
-          if (
-            normRole.includes("pos_grad") ||
-            normRole.includes("pós_grad") ||
-            normRole.includes("pos grad") ||
-            normRole.includes("pós grad") ||
-            normRole.includes("pos-grad") ||
-            normRole.includes("pós-grad")
-          ) {
-            parsedRole = "pos_graduacao";
-          } else if (
-            normRole.includes("grad") ||
-            normRole.includes("bacharel")
-          ) {
-            parsedRole = "graduacao";
+          if (normRole.includes("crime")) {
+            parsedSector = "crime";
+          } else if (normRole.includes("privado 1") || normRole.includes("privado1")) {
+            parsedSector = "privado 1";
+          } else if (normRole.includes("privado 2") || normRole.includes("privado2")) {
+            parsedSector = "privado 2";
+          } else if (normRole.includes("privado 3") || normRole.includes("privado3")) {
+            parsedSector = "privado 3";
+          } else if (normRole.includes("publico")) {
+            parsedSector = "público";
           }
 
-          let parsedGoal = parsedRole === "pos_graduacao" ? 30 : 25;
+          let parsedGoal = 25;
           if (rawGoal) {
             const gNum = parseInt(rawGoal.replace(/[^0-9]/g, ""), 10);
             if (!isNaN(gNum) && gNum > 0) parsedGoal = gNum;
@@ -821,7 +817,7 @@ export default function App() {
               estagiariosFromSheet.push({
                 id: computedId,
                 name: rawName,
-                role: parsedRole,
+                sector: parsedSector,
                 dailyGoal: parsedGoal,
                 matricula: rawMatricula ? rawMatricula.trim() : "",
               });
@@ -840,7 +836,7 @@ export default function App() {
       if (idx !== -1) {
         combinedCurrentAndSheetEstagiarios[idx] = {
           ...combinedCurrentAndSheetEstagiarios[idx],
-          role: sheetEstag.role || combinedCurrentAndSheetEstagiarios[idx].role,
+          sector: sheetEstag.sector || combinedCurrentAndSheetEstagiarios[idx].sector,
           dailyGoal:
             sheetEstag.dailyGoal ||
             combinedCurrentAndSheetEstagiarios[idx].dailyGoal,
@@ -1473,7 +1469,7 @@ export default function App() {
         estagiariosFromSheet.push({
           id: code,
           name: name,
-          role: "graduacao",
+          sector: "público",
           dailyGoal: 25,
           matricula: "",
         });
@@ -1953,7 +1949,7 @@ export default function App() {
             estagiariosToUpsert.push({
               id: computedId,
               name,
-              role: "graduacao",
+              sector: "público",
               dailyGoal: 25,
               matricula: "",
             });
@@ -1967,7 +1963,7 @@ export default function App() {
         if (!existing) return true; // Novo cadastro
         return (
           existing.name !== newEstag.name ||
-          existing.role !== newEstag.role ||
+          existing.sector !== newEstag.sector ||
           existing.dailyGoal !== newEstag.dailyGoal ||
           existing.matricula !== newEstag.matricula
         );
@@ -1999,7 +1995,9 @@ export default function App() {
         const existing = entriesRef.current.find(
           (e) => e.estagiarioId === entry.estagiarioId && e.date === entry.date
         );
-        if (!existing || existing.count !== entry.count) {
+        const existingBStr = JSON.stringify(existing?.typeBreakdown || {});
+        const entryBStr = JSON.stringify(entry.typeBreakdown || {});
+        if (!existing || existing.count !== entry.count || existingBStr !== entryBStr) {
           entriesToUpsert.push(entry);
         }
       });
@@ -2362,7 +2360,7 @@ export default function App() {
     }
 
     if (estagiarios.some((a) => a.id === computedId)) {
-      alert("Um estagiario com este ID ou nome simplificado já existe!");
+      alert("Um assessor com este ID ou nome simplificado já existe!");
       return;
     }
 
@@ -2371,7 +2369,7 @@ export default function App() {
       const newEstagiarioObj: Estagiario = {
         id: computedId,
         name: newEstagiarioName.trim(),
-        role: newEstagiarioRole,
+        sector: newEstagiarioRole as any,
         dailyGoal: Number(newEstagiarioDailyGoal),
         matricula: newEstagiarioMatricula.trim(),
       };
@@ -2385,13 +2383,13 @@ export default function App() {
 
       setNewEstagiarioName("");
       setNewEstagiarioId("");
-      setNewEstagiarioRole("graduacao");
+      setNewEstagiarioRole("público");
       setNewEstagiarioDailyGoal(25);
       setNewEstagiarioMatricula("");
       setIsAddEstagiarioOpen(false);
     } catch (err) {
       console.error("Error adding estagiario:", err);
-      alert("Erro ao criar estagiario de pós/graduação.");
+      alert("Erro ao criar assessor.");
     } finally {
       setIsSaving(false);
     }
@@ -2407,7 +2405,7 @@ export default function App() {
       const updatedEstagiarioObj: Estagiario = {
         id: selectedEstagiarioDetail,
         name: editEstagiarioName.trim(),
-        role: editEstagiarioRole,
+        sector: editEstagiarioRole as any,
         dailyGoal: Number(editEstagiarioDailyGoal),
         matricula: editEstagiarioMatricula.trim(),
       };
@@ -2430,24 +2428,24 @@ export default function App() {
     }
   };
 
-  // Excluir cadastro de Estagiário
+  // Excluir cadastro de Assessor
   const handleDeleteEstagiario = async (estagiarioId: string) => {
     const est = estagiarios.find((a) => a.id === estagiarioId);
     if (!est) return;
 
     if (
       !window.confirm(
-        `Tem certeza que deseja excluir o cadastro do estagiário "${est.name}"? Isso removerá o cadastro dele permanentemente no sistema.`
+        `Tem certeza que deseja excluir o cadastro do assessor "${est.name}"? Isso removerá o cadastro dele permanentemente no sistema.`
       )
     )
       return;
 
     setIsSaving(true);
     try {
-      // 1. Deletar estagiário do banco
+      // 1. Deletar assessor do banco
       await deleteDoc(doc(db, "estagiarios", estagiarioId));
 
-      // 2. Deletar todas as entries de produtividade deste estagiário
+      // 2. Deletar todas as entries de produtividade deste assessor
       const estagiarioEntries = entries.filter((e) => e.estagiarioId === estagiarioId);
       for (const entry of estagiarioEntries) {
         await deleteDoc(doc(db, "productivityEntries", entry.id));
@@ -2459,10 +2457,10 @@ export default function App() {
 
       // Fechar modal de detalhe
       setSelectedEstagiarioDetail(null);
-      alert(`Cadastro do estagiário "${est.name}" e seus respectivos históricos foram removidos.`);
+      alert(`Cadastro do assessor "${est.name}" e seus respectivos históricos foram removidos.`);
     } catch (err) {
       console.error("Error deleting estagiario:", err);
-      alert("Erro ao excluir o cadastro do estagiário.");
+      alert("Erro ao excluir o cadastro do assessor.");
     } finally {
       setIsSaving(false);
     }
@@ -2487,7 +2485,7 @@ export default function App() {
         estagiariosIds: updatedIds,
       });
 
-      const estagiarioName = estagiarios.find((e) => e.id === estagiarioId)?.name || "Estagiário";
+      const estagiarioName = estagiarios.find((e) => e.id === estagiarioId)?.name || "Assessor";
       if (!isCurrentlyActive) {
         showToast(
           `"${estagiarioName}" definido em Semana de Provas! Meta ajustada pela metade.`,
@@ -2507,11 +2505,11 @@ export default function App() {
     }
   };
 
-  // Função para redistribuir processos de um estagiário para outro
+  // Função para redistribuir processos de um assessor para outro
   const handleRedistribute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEstagiarioDetail || !redistributeFromId) {
-      alert("Por favor, selecione o estagiário de origem.");
+      alert("Por favor, selecione o assessor de origem.");
       return;
     }
     if (selectedEstagiarioDetail === redistributeFromId) {
@@ -2525,11 +2523,11 @@ export default function App() {
 
     setIsSaving(true);
     try {
-      // 1. Obter registros de produtividade do estagiário de origem
+      // 1. Obter registros de produtividade do assessor de origem
       const { data: fromEntries, error: err1 } = await supabase
         .from("productivity_entries")
         .select("*")
-        .eq("estagiario_id", redistributeFromId)
+        .eq("assessor_id", redistributeFromId)
         .eq("date", redistributeDate);
 
       if (err1) throw err1;
@@ -2539,15 +2537,15 @@ export default function App() {
 
       if (fromCount < redistributeCount) {
         throw new Error(
-          `O estagiário de origem possui apenas ${fromCount} processos registrados em ${redistributeDate.split("-").reverse().join("/")}.`
+          `O assessor de origem possui apenas ${fromCount} processos registrados em ${redistributeDate.split("-").reverse().join("/")}.`
         );
       }
 
-      // 2. Obter registros de produtividade do estagiário destino (atual)
+      // 2. Obter registros de produtividade do assessor destino (atual)
       const { data: toEntries, error: err2 } = await supabase
         .from("productivity_entries")
         .select("*")
-        .eq("estagiario_id", selectedEstagiarioDetail)
+        .eq("assessor_id", selectedEstagiarioDetail)
         .eq("date", redistributeDate);
 
       if (err2) throw err2;
@@ -2555,7 +2553,7 @@ export default function App() {
       const toEntry = toEntries && toEntries[0];
       const toCount = toEntry ? toEntry.count : 0;
 
-      // 3. Atualizar estagiário origem
+      // 3. Atualizar assessor origem
       const updatedFromCount = fromCount - redistributeCount;
       if (updatedFromCount === 0 && fromEntry) {
         // Excluir registro se zerou
@@ -2572,10 +2570,10 @@ export default function App() {
         if (updErr) throw updErr;
       }
 
-      // 4. Atualizar estagiário destino
+      // 4. Atualizar assessor destino
       const updatedToCount = toCount + redistributeCount;
       const payloadTo = {
-        estagiario_id: selectedEstagiarioDetail,
+        assessor_id: selectedEstagiarioDetail,
         date: redistributeDate,
         count: updatedToCount,
       };
@@ -2732,10 +2730,10 @@ export default function App() {
         ? detailEntry.typeBreakdown
         : {};
 
-      const role =
-        estagiario.role === "pos_graduacao" ? "pos_graduacao" : "graduacao";
+      const sector =
+        estagiario.sector || "público";
       const baseGoal =
-        estagiario.dailyGoal ?? (role === "pos_graduacao" ? 30 : 25);
+        estagiario.dailyGoal ?? 25;
       const isSemanaProva = semanaProvaIds.includes(estagiario.id);
       const dailyGoal = isSemanaProva ? Math.round(baseGoal / 2) : baseGoal;
       const daysMeetingGoal = filteredEntries.filter(
@@ -2745,7 +2743,7 @@ export default function App() {
         dailyGoal > 0
           ? Number(((averagePerDay / dailyGoal) * 100).toFixed(1))
           : 0;
-
+ 
       // Determine status badge: can be based on goalProgressRatio!
       // If goalProgress >= 100% -> ALTO
       // If goalProgress >= 70% -> NORMAL
@@ -2754,10 +2752,10 @@ export default function App() {
       const ratio = dailyGoal > 0 ? (averagePerDay / dailyGoal) * 100 : 0;
       if (ratio >= 100 && totalAnalyzed > 0) status = "ALTO";
       else if (ratio < 70 || totalAnalyzed === 0) status = "ATENÇÃO";
-
+ 
       return {
         ...estagiario,
-        role,
+        sector,
         dailyGoal,
         daysMeetingGoal,
         goalProgressRatio:
@@ -2902,12 +2900,37 @@ export default function App() {
   // Statistics for progress bars (resources split projection based on totals)
   const categorySplit = useMemo(() => {
     const total = globalMetrics.totalAnalyzed || 1;
-    return [
-      { name: "RECURSOS CÍVEIS", pct: 68, color: "bg-blue-600" },
-      { name: "AGRAVOS", pct: 40, color: "bg-amber-500" },
-      { name: "HABEAS CORPUS", pct: 92, color: "bg-emerald-500" },
-    ];
-  }, [globalMetrics.totalAnalyzed]);
+    const sectorSums: Record<string, number> = {
+      "público": 0,
+      "privado 1": 0,
+      "privado 2": 0,
+      "privado 3": 0,
+      "crime": 0
+    };
+    parsedEstagiariosData.forEach((e) => {
+      const s = e.sector || "público";
+      if (sectorSums[s] !== undefined) {
+        sectorSums[s] += e.totalAnalyzed || 0;
+      }
+    });
+
+    const colors: Record<string, string> = {
+      "público": "bg-blue-600",
+      "privado 1": "bg-sky-400",
+      "privado 2": "bg-teal-400",
+      "privado 3": "bg-emerald-500",
+      "crime": "bg-purple-500"
+    };
+
+    return Object.entries(sectorSums).map(([name, count]) => {
+      const pct = Math.round((count / total) * 100);
+      return {
+        name: name.toUpperCase(),
+        pct,
+        color: colors[name] || "bg-slate-500",
+      };
+    });
+  }, [globalMetrics.totalAnalyzed, parsedEstagiariosData]);
 
   // Daily Trends for the active month (Recharts)
   const dailyTrendsData = useMemo(() => {
@@ -3082,16 +3105,33 @@ export default function App() {
 
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
-    // Se não há processos detalhados, fallback para distribuição por categoria
+    // Se não há processos detalhados, fallback para distribuição por setor
     if (total === 0) {
-      const sumByRole: Record<string, number> = { pos_graduacao: 0, graduacao: 0 };
+      const sumBySector: Record<string, number> = {
+        "público": 0,
+        "privado 1": 0,
+        "privado 2": 0,
+        "privado 3": 0,
+        "crime": 0
+      };
       parsedEstagiariosData.forEach((e) => {
-        if (sumByRole[e.role] !== undefined) sumByRole[e.role] += e.totalAnalyzed || 0;
+        const s = e.sector || "público";
+        if (sumBySector[s] !== undefined) sumBySector[s] += e.totalAnalyzed || 0;
       });
-      return [
-        { name: "Pós-Graduação", value: sumByRole.pos_graduacao || 0, fill: "#4f46e5" },
-        { name: "Graduação",     value: sumByRole.graduacao || 0,     fill: "#0ea5e9" },
-      ].filter((x) => x.value > 0);
+      const colors: Record<string, string> = {
+        "público": "#2563eb",
+        "privado 1": "#3b82f6",
+        "privado 2": "#60a5fa",
+        "privado 3": "#93c5fd",
+        "crime": "#7c3aed"
+      };
+      return Object.entries(sumBySector)
+        .map(([sec, val]) => ({
+          name: sec.toUpperCase(),
+          value: val,
+          fill: colors[sec] || "#64748b"
+        }))
+        .filter((x) => x.value > 0);
     }
 
     return Object.entries(PROCESS_TYPES)
@@ -3210,7 +3250,7 @@ export default function App() {
           </p>
 
           <p className="text-sm text-slate-400 mb-8 leading-relaxed">
-            Painel de controle e produtividade de estagiários de graduação e pós-graduação da Assessoria de Recursos.
+            Painel de controle e produtividade de assessores da Assessoria de Recursos, dividido por setores.
           </p>
 
           <button
@@ -3340,7 +3380,7 @@ export default function App() {
           <button
             onClick={() => setIsAddEstagiarioOpen(true)}
             className="w-10 h-10 rounded-xl flex items-center justify-center hover:text-slate-200 hover:bg-slate-800 transition-all cursor-pointer"
-            title="Adicionar Estagiário"
+            title="Adicionar Assessor"
           >
             <UserPlus className="w-5 h-5" />
           </button>
@@ -3620,7 +3660,7 @@ export default function App() {
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Buscar por estagiário..."
+                  placeholder="Buscar por assessor..."
                   value={filterQuery}
                   onChange={(e) => setFilterQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 focus:border-slate-400 focus:bg-white rounded-lg text-xs outline-none transition-all"
@@ -3655,7 +3695,7 @@ export default function App() {
 
               <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm hover:border-slate-300 transition-all">
                 <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase mb-1">
-                  Estagiários Ativos
+                  Assessores Ativos
                 </p>
                 <div className="flex items-baseline justify-between mt-2">
                   <span className="text-3xl font-light text-slate-800">
@@ -3669,7 +3709,7 @@ export default function App() {
 
               <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm hover:border-slate-300 transition-all">
                 <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase mb-1">
-                  Média p/ Estagiário Ativo
+                  Média p/ Assessor Ativo
                 </p>
                 <div className="flex items-baseline justify-between mt-2">
                   <span className="text-3xl font-light text-slate-800">
@@ -3696,6 +3736,50 @@ export default function App() {
               </div>
             </div>
 
+            {/* Resumo de Produtividade por Setores */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              {(() => {
+                const sectorSums: Record<string, number> = {
+                  "público": 0,
+                  "privado 1": 0,
+                  "privado 2": 0,
+                  "privado 3": 0,
+                  "crime": 0
+                };
+                parsedEstagiariosData.forEach((e) => {
+                  const s = e.sector || "público";
+                  if (sectorSums[s] !== undefined) {
+                    sectorSums[s] += e.totalAnalyzed || 0;
+                  }
+                });
+                
+                const sectorGradients: Record<string, string> = {
+                  "público": "from-blue-500 to-indigo-600",
+                  "privado 1": "from-sky-400 to-blue-500",
+                  "privado 2": "from-teal-400 to-emerald-500",
+                  "privado 3": "from-emerald-500 to-green-600",
+                  "crime": "from-purple-500 to-violet-600"
+                };
+
+                return Object.entries(sectorSums).map(([sec, val]) => (
+                  <div key={sec} className="bg-white border border-slate-200 p-4 rounded-xl shadow-sm hover:border-slate-350 transition-all flex flex-col justify-between relative overflow-hidden">
+                    <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${sectorGradients[sec] || "from-slate-400 to-slate-500"}`}></div>
+                    <div>
+                      <p className="text-[9px] text-slate-400 font-extrabold tracking-widest uppercase mb-1 capitalize">
+                        Setor {sec}
+                      </p>
+                      <span className="text-2xl font-light text-slate-800 font-mono">
+                        {val.toLocaleString("pt-BR")}
+                      </span>
+                    </div>
+                    <p className="text-[9px] text-slate-500 mt-1 font-semibold uppercase tracking-wider">
+                      Processos no mês
+                    </p>
+                  </div>
+                ));
+              })()}
+            </div>
+
             {/* Dashboard Layout vs Matrix Layout Grid */}
             <AnimatePresence mode="wait">
               {loading ? (
@@ -3707,7 +3791,7 @@ export default function App() {
                 >
                   <div className="w-10 h-10 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
                   <p className="text-sm font-semibold text-slate-500 mt-4">
-                    Carregando dados dos estagiários...
+                    Carregando dados dos assessores...
                   </p>
                 </motion.div>
               ) : activeTab === "dashboard" ? (
@@ -3858,42 +3942,53 @@ export default function App() {
                           });
                         })()}
                       </div>
-                      {/* Role breakdown */}
+                      {/* Sector breakdown */}
                       {(() => {
-                        const roleSums: Record<string, number> = {};
+                        const sectorSums: Record<string, number> = {
+                          "público": 0,
+                          "privado 1": 0,
+                          "privado 2": 0,
+                          "privado 3": 0,
+                          "crime": 0
+                        };
                         parsedEstagiariosData.forEach((e) => {
-                          roleSums[e.role] = (roleSums[e.role] || 0) + (e.totalAnalyzed || 0);
+                          const s = e.sector || "público";
+                          if (sectorSums[s] !== undefined) {
+                            sectorSums[s] += e.totalAnalyzed || 0;
+                          }
                         });
-                        const pos = roleSums["pos_graduacao"] || 0;
-                        const grad = roleSums["graduacao"] || 0;
-                        const total = pos + grad;
+                        const total = Object.values(sectorSums).reduce((a, b) => a + b, 0);
                         if (total === 0) return null;
-                        const posPct = Math.round((pos / total) * 100);
-                        const gradPct = Math.round((grad / total) * 100);
+                        
+                        const barColors: Record<string, string> = {
+                          "público": "bg-blue-600",
+                          "privado 1": "bg-sky-400",
+                          "privado 2": "bg-teal-400",
+                          "privado 3": "bg-emerald-500",
+                          "crime": "bg-purple-500"
+                        };
+
                         return (
-                          <div className="mt-3 pt-3 border-t border-slate-100">
+                          <div className="mt-3 pt-3 border-t border-slate-100 w-full">
                             <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                              Por Equipe
+                              Participação por Setor
                             </h3>
-                            <div className="flex items-center gap-3">
-                              <div className="flex-1">
-                                <div className="flex justify-between text-[10px] mb-1">
-                                  <span className="font-semibold text-indigo-600">Pós-Graduação</span>
-                                  <span className="font-mono font-bold text-slate-700">{pos} ({posPct}%)</span>
-                                </div>
-                                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${posPct}%` }}></div>
-                                </div>
-                              </div>
-                              <div className="flex-1">
-                                <div className="flex justify-between text-[10px] mb-1">
-                                  <span className="font-semibold text-sky-600">Graduação</span>
-                                  <span className="font-mono font-bold text-slate-700">{grad} ({gradPct}%)</span>
-                                </div>
-                                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-sky-500 rounded-full transition-all" style={{ width: `${gradPct}%` }}></div>
-                                </div>
-                              </div>
+                            <div className="space-y-2">
+                              {Object.entries(sectorSums).map(([sec, val]) => {
+                                const pct = Math.round((val / total) * 100);
+                                if (val === 0) return null;
+                                return (
+                                  <div key={sec} className="w-full">
+                                    <div className="flex justify-between text-[10px] mb-0.5">
+                                      <span className="font-semibold text-slate-700 capitalize">{sec}</span>
+                                      <span className="font-mono font-bold text-slate-900">{val} ({pct}%)</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                      <div className={`h-full rounded-full transition-all ${barColors[sec] || "bg-indigo-500"}`} style={{ width: `${pct}%` }}></div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         );
@@ -4203,10 +4298,10 @@ export default function App() {
                           <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold tracking-widest uppercase cursor-pointer select-none">
                             <tr>
                               <th className="px-6 py-3.5 group" onClick={() => handleTeamSort("name")}>
-                                <div className="flex items-center gap-1">Estagiário {renderSortIcon("name")}</div>
+                                <div className="flex items-center gap-1">Assessor {renderSortIcon("name")}</div>
                               </th>
-                              <th className="px-4 py-3.5 text-center group" onClick={() => handleTeamSort("role")}>
-                                <div className="flex items-center justify-center gap-1">Categoria / Meta {renderSortIcon("role")}</div>
+                              <th className="px-4 py-3.5 text-center group" onClick={() => handleTeamSort("sector")}>
+                                <div className="flex items-center justify-center gap-1">Setor / Meta {renderSortIcon("sector")}</div>
                               </th>
                               <th className="px-4 py-3.5 text-center group" onClick={() => handleTeamSort("todayAnalyzed")}>
                                 <div className="flex items-center justify-center gap-1">Feito Hoje {renderSortIcon("todayAnalyzed")}</div>
@@ -4232,7 +4327,7 @@ export default function App() {
                             {filteredEstagiariosData.length === 0 ? (
                               <tr>
                                 <td colSpan={8} className="px-6 py-10 text-center text-slate-400 font-medium">
-                                  Nenhum estagiário encontrado com os filtros atuais.
+                                  Nenhum assessor encontrado com os filtros atuais.
                                 </td>
                               </tr>
                             ) : (
@@ -4250,12 +4345,8 @@ export default function App() {
                                       {item.name}
                                     </td>
                                     <td className="px-4 py-4 text-center">
-                                      <span className={`px-2 py-0.5 text-[9px] font-bold rounded ${
-                                        item.role === "pos_graduacao"
-                                          ? "bg-slate-200 text-slate-850 border border-slate-300"
-                                          : "bg-slate-100 text-slate-600 border border-slate-150"
-                                      }`}>
-                                        {item.role === "pos_graduacao" ? "Pós-Graduação" : "Graduação"}
+                                      <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-slate-100 text-slate-600 border border-slate-150 capitalize">
+                                        Setor {item.sector}
                                       </span>
                                       <span className="block text-[9px] text-slate-400 font-bold font-mono mt-1">{item.dailyGoal}/dia</span>
                                     </td>
@@ -4302,7 +4393,7 @@ export default function App() {
                     <div className="flex flex-col gap-6">
                       <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm relative overflow-hidden flex-1 flex flex-col justify-between">
                         <div className="relative z-10">
-                          <h3 className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-4">Categorias Estimadas</h3>
+                          <h3 className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-4">Distribuição por Setor</h3>
                           <div className="space-y-4">
                             {categorySplit.map((cat) => (
                               <div key={cat.name}>
@@ -4326,7 +4417,7 @@ export default function App() {
                           Prazo e Suporte
                         </h3>
                         <p className="text-xs text-slate-600 leading-relaxed mb-4">
-                          Selecione um estagiário na tabela para visualizar o histórico diário detalhado, editar lançamentos retroativos ou redistribuir processos.
+                          Selecione um assessor na tabela para visualizar o histórico diário detalhado, editar lançamentos retroativos ou redistribuir processos.
                         </p>
                         <button
                           onClick={() => alert("Tabela de produtividade baseada nos dados do arquivo de referência da 1ª Vice-Presidência.")}
@@ -4369,7 +4460,7 @@ export default function App() {
                         <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold tracking-widest uppercase">
                           <tr>
                             <th className="px-6 py-3.5">Data do Caso</th>
-                            <th className="px-6 py-3.5">Estagiário Responsável</th>
+                            <th className="px-6 py-3.5">Assessor Responsável</th>
                             <th className="px-6 py-3.5 text-center">Processos Concluídos</th>
                             <th className="px-6 py-3.5 text-right">Ações Rápidas</th>
                           </tr>
@@ -4683,10 +4774,10 @@ export default function App() {
                 <form onSubmit={handleSaveEntry} className="p-6 space-y-4">
                   <div>
                     <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">
-                      Estagiário Responsável
+                      Assessor Responsável
                     </label>
                     <select
-                      id="select-estagiario"
+                      id="select-assessor"
                       value={formEstagiarioId}
                       onChange={(e) => setFormEstagiarioId(e.target.value)}
                       required
@@ -4694,7 +4785,7 @@ export default function App() {
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium outline-none focus:border-slate-400 focus:bg-white"
                     >
                       <option value="" disabled>
-                        Selecione um estagiário...
+                        Selecione um assessor...
                       </option>
                       {estagiarios.map((item) => (
                         <option key={item.id} value={item.id}>
@@ -4779,7 +4870,7 @@ export default function App() {
               >
                 <div className="bg-slate-900 text-white px-6 py-4 flex justify-between items-center">
                   <h3 className="text-sm font-bold uppercase tracking-wider">
-                    Adicionar Estagiário à Equipe
+                    Adicionar Assessor à Equipe
                   </h3>
                   <button
                     onClick={() => setIsAddEstagiarioOpen(false)}
@@ -4834,25 +4925,22 @@ export default function App() {
 
                   <div>
                     <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">
-                      Categoria / Tipo de Estagiário
+                      Setor do Assessor
                     </label>
                     <select
                       value={newEstagiarioRole}
                       onChange={(e) => {
                         const val = e.target.value;
                         setNewEstagiarioRole(val);
-                        setNewEstagiarioDailyGoal(
-                          val === "pos_graduacao" ? 30 : 25,
-                        );
+                        setNewEstagiarioDailyGoal(25);
                       }}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400 focus:bg-white cursor-pointer font-bold text-slate-800"
                     >
-                      <option value="pos_graduacao">
-                        Estagiário de Pós-Graduação (Meta: 30/dia)
-                      </option>
-                      <option value="graduacao">
-                        Estagiário de Graduação (Meta: 25/dia)
-                      </option>
+                      <option value="público">Setor Público (Meta: 25/dia)</option>
+                      <option value="privado 1">Setor Privado 1 (Meta: 25/dia)</option>
+                      <option value="privado 2">Setor Privado 2 (Meta: 25/dia)</option>
+                      <option value="privado 3">Setor Privado 3 (Meta: 25/dia)</option>
+                      <option value="crime">Setor Crime (Meta: 25/dia)</option>
                     </select>
                   </div>
 
@@ -4887,7 +4975,7 @@ export default function App() {
                       disabled={isSaving}
                       className="flex-1 py-2 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 rounded-lg text-xs font-bold transition-all cursor-pointer"
                     >
-                      {isSaving ? "Adicionando..." : "Cadastrar Estagiário"}
+                      {isSaving ? "Adicionando..." : "Cadastrar Assessor"}
                     </button>
                   </div>
                 </form>
@@ -4932,7 +5020,7 @@ export default function App() {
                           className="p-6 bg-slate-150 border-b border-slate-250 space-y-3"
                         >
                           <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
-                            Editar Cadastro do Estagiário
+                            Editar Cadastro do Assessor
                           </h4>
 
                           <div>
@@ -4968,23 +5056,22 @@ export default function App() {
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">
-                                Categoria / Tipo
+                                Setor do Assessor
                               </label>
                               <select
                                 value={editEstagiarioRole}
                                 onChange={(e) => {
                                   const val = e.target.value;
                                   setEditEstagiarioRole(val);
-                                  setEditEstagiarioDailyGoal(
-                                    val === "pos_graduacao" ? 30 : 25,
-                                  );
+                                  setEditEstagiarioDailyGoal(25);
                                 }}
                                 className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded-lg text-xs outline-none focus:border-slate-400 cursor-pointer font-bold text-slate-700"
                               >
-                                <option value="pos_graduacao">
-                                  Pós-Graduação
-                                </option>
-                                <option value="graduacao">Graduação</option>
+                                <option value="público">Público</option>
+                                <option value="privado 1">Privado 1</option>
+                                <option value="privado 2">Privado 2</option>
+                                <option value="privado 3">Privado 3</option>
+                                <option value="crime">Crime</option>
                               </select>
                             </div>
 
@@ -5054,14 +5141,10 @@ export default function App() {
                                     detailedEstagiario.name,
                                   );
                                   setEditEstagiarioRole(
-                                    detailedEstagiario.role || "pos",
+                                    detailedEstagiario.sector || "público",
                                   );
                                   setEditEstagiarioDailyGoal(
-                                    detailedEstagiario.dailyGoal ??
-                                      (detailedEstagiario.role ===
-                                      "pos_graduacao"
-                                        ? 30
-                                        : 25),
+                                    detailedEstagiario.dailyGoal ?? 25,
                                   );
                                   setEditEstagiarioMatricula(
                                     detailedEstagiario.matricula || "",
@@ -5069,23 +5152,21 @@ export default function App() {
                                   setIsEditingCadastre(true);
                                 }}
                                 className="p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                                title="Editar cadastro do estagiário"
+                                title="Editar cadastro do assessor"
                               >
                                 <Edit3 className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleDeleteEstagiario(detailedEstagiario.id)}
                                 className="p-1 text-slate-400 hover:text-red-400 transition-colors cursor-pointer ml-1"
-                                title="Excluir estagiário da equipe"
+                                title="Excluir assessor da equipe"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1 flex flex-wrap items-center gap-1.5">
-                              <span className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded text-[9px]">
-                                {detailedEstagiario.role === "pos_graduacao"
-                                  ? "Pós-Graduação"
-                                  : "Graduação"}
+                              <span className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded text-[9px] capitalize">
+                                Setor {detailedEstagiario.sector}
                               </span>
                               {detailedEstagiario.matricula && (
                                 <span className="px-1.5 py-0.5 bg-emerald-950 text-emerald-200 border border-emerald-800 rounded text-[9px] font-mono">

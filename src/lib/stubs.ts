@@ -1,24 +1,24 @@
 /**
  * stubs.ts → Supabase Implementation
  *
- * Antes era um conjunto de stubs vazios simulando Firebase.
- * Agora implementa todas as funções usando Supabase como backend real.
+ * Implementa todas as funções de compatibilidade Firebase-like usando Supabase como backend real.
+ * Atualizado para gerenciar "Assessores" em vez de "Estagiários".
  */
 import { supabase, signInWithGoogle as _signInWithGoogle, signOut as _signOut, getGoogleAccessToken } from './supabase'
-import type { Estagiario, ProductivityEntry } from './types'
+import type { Assessor, ProductivityEntry } from './types'
 
 // =====================================================
 // Mapeamento de nomes de coleções Firebase → tabelas Supabase
 // =====================================================
 const TABLE_MAP: Record<string, string> = {
-  'estagiarios': 'estagiarios',
+  'assessores': 'assessores',
+  'estagiarios': 'assessores', // retrocompatibilidade
   'productivityEntries': 'productivity_entries',
   'productivity_entries': 'productivity_entries',
   'settings': 'settings',
 }
 
 const resolveTable = (name: string): string => TABLE_MAP[name] ?? name
-
 
 type DocRef = { table: string; id: string }
 type CollectionRef = { table: string }
@@ -74,7 +74,11 @@ export const getDocs = async (ref: CollectionRef | QueryRef): Promise<{
     }
     for (const f of filters) {
       if (f?.column && f?.value !== undefined) {
-        q = q.eq(f.column, f.value) as any
+        // Trata mapeamento de coluna de filtro
+        let col = f.column
+        if (col === 'estagiarioId' || col === 'estagiario_id') col = 'assessor_id'
+        if (col === 'assessorId') col = 'assessor_id'
+        q = q.eq(col, f.value) as any
       }
     }
 
@@ -96,15 +100,16 @@ export const getDocs = async (ref: CollectionRef | QueryRef): Promise<{
       hasMore = false
     }
   }
+  
   const docs = rows.map((row: any) => ({
     id: row.id,
     data: () => {
       const { id, ...rest } = row
       // Normalizar campos snake_case → camelCase para compatibilidade
-      if (table === 'estagiarios') {
+      if (table === 'assessores') {
         return {
           name: rest.name,
-          role: rest.role,
+          sector: rest.sector,
           dailyGoal: rest.daily_goal,
           matricula: rest.matricula,
           ...rest,
@@ -112,7 +117,8 @@ export const getDocs = async (ref: CollectionRef | QueryRef): Promise<{
       }
       if (table === 'productivity_entries') {
         return {
-          estagiarioId: rest.estagiario_id,
+          assessorId: rest.assessor_id,
+          estagiarioId: rest.assessor_id, // retrocompatibilidade
           date: rest.date,
           count: rest.count,
           typeBreakdown: rest.type_breakdown ?? {},
@@ -159,21 +165,20 @@ export const getDoc = async (ref: DocRef): Promise<{
   }
 }
 
-
 // =====================================================
 // Operações de escrita
 // =====================================================
 
-const mapEstagiarioToRow = (data: Partial<Estagiario>) => ({
+const mapAssessorToRow = (data: Partial<Assessor>) => ({
   name: data.name,
-  role: data.role ?? 'graduacao',
+  sector: data.sector ?? 'público',
   daily_goal: data.dailyGoal ?? 25,
   matricula: data.matricula ?? '',
   updated_at: new Date().toISOString(),
 })
 
 const mapEntryToRow = (data: Partial<ProductivityEntry>) => ({
-  estagiario_id: data.estagiarioId,
+  assessor_id: data.assessorId || (data as any).estagiarioId,
   date: data.date,
   count: data.count ?? 0,
   type_breakdown: data.typeBreakdown ?? {},
@@ -191,7 +196,7 @@ export const setDoc = async (ref: DocRef, data: any, options?: any): Promise<voi
   }
 
   const row: any = { id: ref.id }
-  if (ref.table === 'estagiarios') Object.assign(row, mapEstagiarioToRow(data))
+  if (ref.table === 'assessores') Object.assign(row, mapAssessorToRow(data))
   if (ref.table === 'productivity_entries') Object.assign(row, mapEntryToRow(data))
 
   const { error } = await supabase.from(ref.table).upsert(row, { onConflict: 'id' })
@@ -201,9 +206,9 @@ export const setDoc = async (ref: DocRef, data: any, options?: any): Promise<voi
 export const addDoc = async (collRef: CollectionRef, data: any): Promise<{ id: string }> => {
   const row: any = {}
 
-  if (collRef.table === 'estagiarios') {
+  if (collRef.table === 'assessores') {
     row.id = data.id
-    Object.assign(row, mapEstagiarioToRow(data))
+    Object.assign(row, mapAssessorToRow(data))
   }
 
   if (collRef.table === 'productivity_entries') {
@@ -241,7 +246,7 @@ export const updateDoc = async (ref: DocRef, data: any): Promise<void> => {
 
   const updates: any = { updated_at: new Date().toISOString() }
   if (data.name !== undefined) updates.name = data.name
-  if (data.role !== undefined) updates.role = data.role
+  if (data.sector !== undefined) updates.sector = data.sector
   if (data.dailyGoal !== undefined) updates.daily_goal = data.dailyGoal
   if (data.matricula !== undefined) updates.matricula = data.matricula
   if (data.count !== undefined) updates.count = data.count
@@ -285,28 +290,28 @@ export const writeBatch = (_db: any) => {
 // Upsert em massa otimizado (usado pelo sync da planilha)
 // =====================================================
 
-export const batchUpsertEstagiarios = async (items: Estagiario[]): Promise<void> => {
+export const batchUpsertAssessores = async (items: Assessor[]): Promise<void> => {
   if (!items.length) return
   const rows = items.map((e) => ({
     id: e.id,
     name: e.name,
-    role: e.role ?? 'graduacao',
+    sector: e.sector ?? 'público',
     daily_goal: e.dailyGoal ?? 25,
     matricula: e.matricula ?? '',
     updated_at: new Date().toISOString(),
   }))
 
   const { error } = await supabase
-    .from('estagiarios')
+    .from('assessores')
     .upsert(rows, { onConflict: 'id' })
 
-  if (error) console.error('Erro no batch upsert de estagiarios:', error)
+  if (error) console.error('Erro no batch upsert de assessores:', error)
 }
 
 export const batchUpsertEntries = async (items: Omit<ProductivityEntry, 'id'>[]): Promise<void> => {
   if (!items.length) return
   const rows = items.map((e) => ({
-    estagiario_id: e.estagiarioId,
+    assessor_id: e.assessorId || (e as any).estagiarioId,
     date: e.date,
     count: e.count,
     type_breakdown: e.typeBreakdown ?? {},
@@ -317,7 +322,7 @@ export const batchUpsertEntries = async (items: Omit<ProductivityEntry, 'id'>[])
     const chunk = rows.slice(i, i + 500)
     const { error } = await supabase
       .from('productivity_entries')
-      .upsert(chunk, { onConflict: 'estagiario_id,date' })
+      .upsert(chunk, { onConflict: 'assessor_id,date' })
 
     if (error) console.error('Erro no batch upsert de entries:', error)
   }
@@ -385,21 +390,21 @@ export const seedDatabaseIfEmpty = async (): Promise<void> => {
 // Realtime Subscriptions
 // =====================================================
 
-export const subscribeToEstagiarios = (
-  onInsertOrUpdate: (record: Estagiario) => void,
+export const subscribeToAssessores = (
+  onInsertOrUpdate: (record: Assessor) => void,
   onDelete: (id: string) => void
 ) => {
   const channel = supabase
-    .channel('estagiarios-changes')
+    .channel('assessores-changes')
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'estagiarios' },
+      { event: 'INSERT', schema: 'public', table: 'assessores' },
       (payload) => {
         const r = payload.new as any
         onInsertOrUpdate({
           id: r.id,
           name: r.name,
-          role: r.role,
+          sector: r.sector,
           dailyGoal: r.daily_goal,
           matricula: r.matricula,
         })
@@ -407,13 +412,13 @@ export const subscribeToEstagiarios = (
     )
     .on(
       'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'estagiarios' },
+      { event: 'UPDATE', schema: 'public', table: 'assessores' },
       (payload) => {
         const r = payload.new as any
         onInsertOrUpdate({
           id: r.id,
           name: r.name,
-          role: r.role,
+          sector: r.sector,
           dailyGoal: r.daily_goal,
           matricula: r.matricula,
         })
@@ -421,7 +426,7 @@ export const subscribeToEstagiarios = (
     )
     .on(
       'postgres_changes',
-      { event: 'DELETE', schema: 'public', table: 'estagiarios' },
+      { event: 'DELETE', schema: 'public', table: 'assessores' },
       (payload) => {
         onDelete((payload.old as any).id)
       }
@@ -444,7 +449,7 @@ export const subscribeToEntries = (
         const r = payload.new as any
         onInsertOrUpdate({
           id: r.id,
-          estagiarioId: r.estagiario_id,
+          assessorId: r.assessor_id,
           date: r.date,
           count: r.count,
         })
@@ -457,7 +462,7 @@ export const subscribeToEntries = (
         const r = payload.new as any
         onInsertOrUpdate({
           id: r.id,
-          estagiarioId: r.estagiario_id,
+          assessorId: r.assessor_id,
           date: r.date,
           count: r.count,
         })
