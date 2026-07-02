@@ -67,6 +67,7 @@ import {
   Zap,
   Lock,
   GraduationCap,
+  ArrowLeft,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -155,6 +156,10 @@ export default function App() {
     string | null
   >(null);
   const [selectedSectorDetail, setSelectedSectorDetail] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedSectorDetail(null);
+  }, [activeTab]);
 
   // Form State - New Entry
   const [formEstagiarioId, setFormEstagiarioId] = useState<string>("");
@@ -3822,6 +3827,214 @@ export default function App() {
                     Carregando dados dos assessores...
                   </p>
                 </motion.div>
+              ) : activeTab === "dashboard" && selectedSectorDetail ? (
+                <motion.div
+                  key="sector-detail-view"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex flex-col gap-6"
+                >
+                  {/* Header do Setor */}
+                  {(() => {
+                    const sectorGradients: Record<string, string> = {
+                      "público": "from-blue-500 to-indigo-600",
+                      "privado 1": "from-sky-400 to-blue-500",
+                      "privado 2": "from-teal-400 to-emerald-500",
+                      "privado 3": "from-emerald-500 to-green-600",
+                      "crime": "from-purple-500 to-violet-600"
+                    };
+                    const gradient = sectorGradients[selectedSectorDetail] || "from-slate-500 to-slate-600";
+                    
+                    const assessorsInSector = parsedEstagiariosData.filter(
+                      (e) => (e.sector || "público") === selectedSectorDetail
+                    );
+
+                    const totalSectorAnalyzed = assessorsInSector.reduce((sum, e) => sum + (e.totalAnalyzed || 0), 0);
+
+                    return (
+                      <>
+                        <div className={`bg-gradient-to-r ${gradient} text-white px-6 py-5 rounded-2xl shadow-md flex justify-between items-center relative overflow-hidden`}>
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                          <div>
+                            <button
+                              onClick={() => setSelectedSectorDetail(null)}
+                              className="text-white/80 hover:text-white flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer mb-2 bg-white/10 px-2.5 py-1 rounded-lg border border-white/10"
+                            >
+                              <ArrowLeft className="w-3.5 h-3.5" />
+                              Voltar para Dashboard
+                            </button>
+                            <h3 className="text-2xl font-black uppercase tracking-tight capitalize mt-1">
+                              Setor {selectedSectorDetail}
+                            </h3>
+                          </div>
+                          
+                          {/* Resumo Rápido */}
+                          <div className="flex gap-4 sm:gap-6 text-right">
+                            <div className="hidden sm:block">
+                              <span className="text-[10px] text-white/70 font-extrabold uppercase tracking-wider block">Assessores</span>
+                              <span className="text-xl font-bold font-mono">{assessorsInSector.length}</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-white/70 font-extrabold uppercase tracking-wider block">Total Mês</span>
+                              <span className="text-xl font-bold font-mono">{totalSectorAnalyzed.toLocaleString("pt-BR")}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Métricas e Estatísticas do Setor */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-black">
+                              T
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase block">Total Produzido</span>
+                              <span className="text-2xl font-black text-slate-800 font-mono mt-0.5 block">
+                                {totalSectorAnalyzed.toLocaleString("pt-BR")}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
+                              A
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase block">Assessores Ativos</span>
+                              <span className="text-2xl font-black text-slate-800 font-mono mt-0.5 block">
+                                {assessorsInSector.length}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">
+                              M
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase block">Média por Assessor</span>
+                              <span className="text-2xl font-black text-slate-800 font-mono mt-0.5 block">
+                                {assessorsInSector.length > 0 
+                                  ? Math.round(totalSectorAnalyzed / assessorsInSector.length).toLocaleString("pt-BR") 
+                                  : 0}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Listagem dos Assessores do Setor */}
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wide">
+                              Produtividade Individual dos Assessores
+                            </h4>
+                            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                              Clique no card para ver detalhes/redistribuir
+                            </span>
+                          </div>
+
+                          {assessorsInSector.length === 0 ? (
+                            <div className="text-center py-16 bg-white border border-dashed border-slate-200 rounded-xl text-slate-400 font-medium">
+                              Nenhum assessor cadastrado neste setor.
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {assessorsInSector.map((assessor) => {
+                                const percentMeta = assessor.dailyGoal > 0 
+                                  ? Math.min(100, Math.round(((assessor.totalAnalyzed / 4) / (assessor.dailyGoal * 5)) * 100)) 
+                                  : 0;
+                                const weeklyAvg = Math.round((assessor.totalAnalyzed || 0) / 4);
+
+                                return (
+                                  <div
+                                    key={assessor.id}
+                                    onClick={() => {
+                                      setSelectedEstagiarioDetail(assessor.id);
+                                      setRedistributeDate(selectedDetailDate || getCurrentDate());
+                                    }}
+                                    className="bg-white border border-slate-200 hover:border-indigo-400 transition-all rounded-xl p-5 shadow-sm hover:shadow-md cursor-pointer flex flex-col relative group"
+                                  >
+                                    {/* Botão de Atalho Semana de Prova */}
+                                    <button
+                                      title={assessor.semanaProva ? "Finalizar Semana de Provas" : "Definir Semana de Provas (Meio Período)"}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleSemanaProva(assessor.id);
+                                      }}
+                                      className={`absolute top-4 right-4 p-1.5 rounded-lg border transition-all ${
+                                        assessor.semanaProva
+                                          ? "bg-violet-100 border-violet-300 text-violet-700 opacity-100"
+                                          : "bg-slate-50 border-slate-200 text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100"
+                                      } shadow-sm z-10`}
+                                    >
+                                      <GraduationCap className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <div className="flex items-center gap-3 mb-4">
+                                      <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-sm uppercase">
+                                        {assessor.name.charAt(0)}
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <h4 className="text-sm font-extrabold text-slate-800 truncate group-hover:text-indigo-600 transition-colors pr-6">
+                                          {assessor.name}
+                                        </h4>
+                                        <p className="text-[10px] text-slate-400 font-semibold uppercase">
+                                          Meta: {assessor.dailyGoal || 25} proc/dia
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="space-y-4 flex-1">
+                                      {/* Métricas Principais */}
+                                      <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                                        <div>
+                                          <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Total no Mês</span>
+                                          <span className="text-sm font-black text-slate-800 font-mono mt-0.5 block">{assessor.totalAnalyzed.toLocaleString("pt-BR")} proc.</span>
+                                        </div>
+                                        <div className="text-right">
+                                          <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Média Semanal</span>
+                                          <span className="text-sm font-black text-slate-800 font-mono mt-0.5 block">~{weeklyAvg} proc.</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Progresso de Meta */}
+                                      <div className="space-y-1">
+                                        <div className="flex justify-between text-[10px] text-slate-400 font-extrabold uppercase tracking-wide">
+                                          <span>Progresso Mensal</span>
+                                          <span>{percentMeta}%</span>
+                                        </div>
+                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                          <div 
+                                            className={`h-full rounded-full transition-all ${percentMeta >= 100 ? 'bg-emerald-500' : percentMeta >= 50 ? 'bg-indigo-500' : 'bg-amber-500'}`} 
+                                            style={{ width: `${percentMeta}%` }}
+                                          ></div>
+                                        </div>
+                                      </div>
+
+                                      {/* Produtividade do Dia Selecionado */}
+                                      <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-xs">
+                                        <span className="text-slate-500 font-medium">Analisado em {selectedDetailDate.split("-").reverse().join("/")}:</span>
+                                        <span className="font-bold text-slate-900 font-mono">{assessor.detailAnalyzed} / {assessor.dailyGoal} proc.</span>
+                                      </div>
+
+                                      {/* Semana de Prova Tag */}
+                                      {assessor.semanaProva && (
+                                        <span className="inline-flex items-center gap-0.5 text-[8px] font-black text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full mt-2 self-start select-none shadow-xs">
+                                          📝 Prova (Meio Período)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </motion.div>
               ) : activeTab === "dashboard" ? (
                 <motion.div
                   key="dashboard-view"
@@ -3831,7 +4044,7 @@ export default function App() {
                   className="flex flex-col gap-6"
                 >
                   {/* Charts Row */}
-                  <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1.2fr_1.2fr] gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1.2fr] gap-6">
                     {/* Daily Productivity Bar/Line Chart */}
                     <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col justify-between">
                       <h2 className="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-2 mb-4">
@@ -4022,45 +4235,6 @@ export default function App() {
                         );
                       })()}
                     </div>
-
-                    {/* Weekly Ranking List */}
-                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col justify-start h-[348px] gap-2">
-                      <h2 className="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                        <Award className="w-4 h-4 text-indigo-500" />
-                        RANKING DA SEMANA ({weeklyRangeLabel})
-                      </h2>
-                      <div className="overflow-y-auto pr-1 space-y-0.5 max-h-[285px]">
-                        {weeklyRankingList.length === 0 ? (
-                          <p className="text-xs text-slate-400 text-center py-10 font-medium">Nenhum dado registrado esta semana.</p>
-                        ) : (
-                          weeklyRankingList.map((est, rankIdx) => (
-                            <div key={est.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-50 last:border-0">
-                              <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${
-                                  rankIdx === 0 ? "bg-amber-150 text-amber-800 border border-amber-250" :
-                                  rankIdx === 1 ? "bg-slate-150 text-slate-800 border border-slate-250" :
-                                  rankIdx === 2 ? "bg-orange-150 text-orange-850 border border-orange-250" :
-                                  "bg-slate-50 text-slate-500 border border-slate-250"
-                                }`}>
-                                  {est.rank}
-                                </span>
-                                <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
-                                  <span className="font-semibold text-slate-700 shrink-0">{est.name}</span>
-                                  <div className="flex flex-wrap items-center gap-x-1.5 text-[10px] text-slate-500 font-medium select-none">
-                                    {est.breakdown.map((b) => (
-                                      <span key={b.type} className="whitespace-nowrap">
-                                        {b.emoji}{b.pct}% {b.type}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                              <span className="font-mono font-bold text-slate-900 shrink-0 ml-2">{est.count} proc.</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
                   </div>
 
                   {/* Detalhe do Dia Selecionado List */}
@@ -4109,188 +4283,62 @@ export default function App() {
                         </span>
                       </div>
                     </div>
-                    <div className="p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                      {/* Card Especial de Destaque com o Total da Equipe */}
-                      <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 border border-indigo-600 rounded-lg p-3 flex flex-col items-center justify-center relative overflow-hidden shadow-sm select-none">
-                        <div className="absolute top-0 right-0 w-12 h-12 bg-white/10 rounded-full blur-xl -mr-3 -mt-3"></div>
-                        <span className="text-xs font-extrabold text-white text-center uppercase tracking-wider w-full">
-                          TOTAL EQUIPE
-                        </span>
-                        <span className="text-2xl font-black text-white mt-1">
-                          {totalDayAnalyzed.toLocaleString("pt-BR")}
-                        </span>
-                        <span className="text-[9px] text-indigo-100 font-bold mt-1 w-full text-center truncate">
-                          PROCESSOS CONCLUÍDOS
-                        </span>
-                        {/* Team-wide process type breakdown - prioriza typeBreakdown das entries, fallback em allDetailedProcesses */}
-                        {(() => {
-                          const teamBreakdown: Record<string, number> = {};
-
-                          // Prioridade 1: somar typeBreakdown das entries de cada estagiário
-                          parsedEstagiariosData.forEach((est) => {
-                            if (est.detailTypeBreakdown && Object.keys(est.detailTypeBreakdown).length > 0) {
-                              Object.entries(est.detailTypeBreakdown).forEach(([tipo, qtd]) => {
-                                teamBreakdown[tipo] = (teamBreakdown[tipo] || 0) + Number(qtd);
-                              });
-                            } else {
-                              // Fallback: allDetailedProcesses para dados antigos
-                              const procs = allDetailedProcesses[est.id];
-                              if (procs) {
-                                Object.values(procs).filter((p: any) => p.date === selectedDetailDate).forEach((p: any) => {
-                                  const o = p.origem || 'CV';
-                                  teamBreakdown[o] = (teamBreakdown[o] || 0) + 1;
-                                });
-                              }
-                            }
-                          });
-
-                          const order = ['CV','RCV','DCV','REDCV','CR','RCR','DCR','REDCR','REVCR'];
-                          const sorted = Object.entries(teamBreakdown).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
-                          if (sorted.length === 0) return null;
-                          return (
-                            <div className="flex flex-wrap gap-1 justify-center mt-2 w-full border-t border-white/15 pt-2">
-                              {sorted.map(([tipo, count]) => (
-                                <span
-                                  key={tipo}
-                                  className="text-[8px] font-black px-1.5 py-0.5 rounded bg-white/15 text-white"
-                                >
-                                  {tipo}:{count}
-                                </span>
-                              ))}
-                            </div>
-                          );
-                        })()}
+                    {/* Painel Horizontal Agregado do Dia */}
+                    <div className="p-6 bg-slate-50 flex flex-col md:flex-row items-center justify-between gap-6 border-t border-slate-100">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-indigo-100">
+                          {totalDayAnalyzed}
+                        </div>
+                        <div className="text-left">
+                          <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Total da Equipe no Dia</h4>
+                          <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Processos analisados por todos os setores</p>
+                        </div>
                       </div>
 
-                      {parsedEstagiariosData
-                        .slice()
-                        .sort((a, b) => b.detailAnalyzed - a.detailAnalyzed)
-                        .map((est) => {
-                          return (
-                            <div
-                              key={est.id}
-                              onClick={() => {
-                                setSelectedEstagiarioDetail(est.id);
-                                setRedistributeDate(selectedDetailDate);
-                              }}
-                              className="bg-white border border-slate-200 hover:border-indigo-400 transition-all rounded-xl flex flex-col relative overflow-hidden shadow-sm hover:shadow-md cursor-pointer group"
-                            >
-                              {/* Faixa de cor no topo */}
-                              {est.detailAnalyzed >= est.dailyGoal ? (
-                                <div className="h-1.5 w-full bg-emerald-500"></div>
-                              ) : est.detailAnalyzed >= est.dailyGoal * 0.8 ? (
-                                <div className="h-1.5 w-full bg-amber-400"></div>
-                              ) : est.detailAnalyzed > 0 ? (
-                                <div className="h-1.5 w-full" style={{background: '#8B1A1A'}}></div>
-                              ) : (
-                                <div className="h-1.5 w-full bg-slate-100"></div>
-                              )}
+                      {/* Team-wide process type breakdown */}
+                      {(() => {
+                        const teamBreakdown: Record<string, number> = {};
+                        parsedEstagiariosData.forEach((est) => {
+                          if (est.detailTypeBreakdown && Object.keys(est.detailTypeBreakdown).length > 0) {
+                            Object.entries(est.detailTypeBreakdown).forEach(([tipo, qtd]) => {
+                              teamBreakdown[tipo] = (teamBreakdown[tipo] || 0) + Number(qtd);
+                            });
+                          } else {
+                            const procs = allDetailedProcesses[est.id];
+                            if (procs) {
+                              Object.values(procs).filter((p: any) => p.date === selectedDetailDate).forEach((p: any) => {
+                                const o = p.origem || 'CV';
+                                teamBreakdown[o] = (teamBreakdown[o] || 0) + 1;
+                              });
+                            }
+                          }
+                        });
 
-                              {/* Botão de Atalho Semana de Prova */}
-                              <button
-                                title={est.semanaProva ? "Finalizar Semana de Provas" : "Definir Semana de Provas (Meio Período)"}
-                                onClick={(e) => {
-                                  e.stopPropagation(); // Evita abrir o modal
-                                  handleToggleSemanaProva(est.id);
-                                }}
-                                className={`absolute top-2 right-2 p-1 rounded-md border transition-all ${
-                                  est.semanaProva
-                                    ? "bg-violet-100 hover:bg-violet-200 border-violet-300 text-violet-700 opacity-100"
-                                    : "bg-slate-50 hover:bg-indigo-50 border-slate-200 text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100"
-                                } shadow-sm z-10`}
+                        const ORIGEM_COLORS: Record<string, string> = {
+                          CV: '#2563eb', RCV: '#3b82f6', DCV: '#60a5fa', REDCV: '#ef4444',
+                          CR: '#7c3aed', RCR: '#8b5cf6', DCR: '#a78bfa', REDCR: '#dc2626', REVCR: '#f87171',
+                        };
+                        const order = ['CV','RCV','DCV','REDCV','CR','RCR','DCR','REDCR','REVCR'];
+                        const sorted = Object.entries(teamBreakdown)
+                          .filter(([, v]) => Number(v) > 0)
+                          .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
+                        if (sorted.length === 0) return (
+                          <span className="text-xs text-slate-400 font-medium">Nenhum lançamento no dia.</span>
+                        );
+                        return (
+                          <div className="flex flex-wrap gap-2 justify-end">
+                            {sorted.map(([tipo, count]) => (
+                              <span
+                                key={tipo}
+                                className="text-[10px] font-bold px-2.5 py-1 rounded-lg"
+                                style={{ backgroundColor: (ORIGEM_COLORS[tipo] || '#94a3b8') + '15', color: ORIGEM_COLORS[tipo] || '#94a3b8', border: `1px solid ${(ORIGEM_COLORS[tipo] || '#94a3b8')}33` }}
                               >
-                                <GraduationCap className="w-3 h-3" />
-                              </button>
-
-                              <div className="p-3 flex flex-col flex-1">
-                                {/* Nome */}
-                                <span
-                                  className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider truncate w-full text-center group-hover:text-indigo-600 transition-colors pr-6"
-                                  title={est.name}
-                                >
-                                  {est.name}
-                                </span>
-
-                                {est.semanaProva && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] font-black text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full mt-1.5 self-center select-none shadow-xs">
-                                    📝 Prova (Meio Período)
-                                  </span>
-                                )}
-
-                                {/* Total em destaque */}
-                                <div className="flex items-baseline justify-center gap-1 mt-1.5">
-                                  <span className={`text-3xl font-black leading-none ${est.detailAnalyzed > 0 ? "text-slate-800" : "text-slate-200"}`}>
-                                    {est.detailAnalyzed}
-                                  </span>
-                                  {est.detailAnalyzed > 0 && (
-                                    <span className="text-[9px] text-slate-400 font-semibold leading-none mb-0.5">
-                                      /{est.dailyGoal}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Sem produção */}
-                                {est.detailAnalyzed === 0 && (
-                                  <span className="text-[9px] text-slate-300 text-center mt-1 font-mono">sem lançamentos</span>
-                                )}
-
-                                {/* Meta */}
-                                {est.detailAnalyzed > 0 && (
-                                  <span className="text-[9px] text-slate-300 font-mono text-center mt-2">
-                                    META: {est.dailyGoal}
-                                  </span>
-                                )}
-
-                                {/* Process type breakdown for this day - usando typeBreakdown da entry (ou allDetailedProcesses como fallback) */}
-                                {(() => {
-                                  // Prioridade 1: breakdown direto da entry (fonte única e consistente)
-                                  let breakdown: Record<string, number> = est.detailTypeBreakdown ?? {};
-
-                                  // Fallback: usar allDetailedProcesses para dados antigos sem typeBreakdown
-                                  if (Object.keys(breakdown).length === 0) {
-                                    const procs = allDetailedProcesses[est.id];
-                                    if (procs) {
-                                      const dayProcs = Object.values(procs).filter((p: any) => p.date === selectedDetailDate);
-                                      dayProcs.forEach((p: any) => {
-                                        const o = p.origem || 'CV';
-                                        breakdown[o] = (breakdown[o] || 0) + 1;
-                                      });
-                                    }
-                                  }
-
-                                  if (Object.keys(breakdown).length === 0) return null;
-                                  const ORIGEM_COLORS: Record<string, string> = {
-                                    CV: '#2563eb', RCV: '#3b82f6', DCV: '#60a5fa', REDCV: '#ef4444',
-                                    CR: '#7c3aed', RCR: '#8b5cf6', DCR: '#a78bfa', REDCR: '#dc2626', REVCR: '#f87171',
-                                  };
-                                  const order = ['CV','RCV','DCV','REDCV','CR','RCR','DCR','REDCR','REVCR'];
-                                  const sorted = Object.entries(breakdown)
-                                    .filter(([, v]) => Number(v) > 0)
-                                    .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b)) as [string, number][];
-                                  if (sorted.length === 0) return null;
-                                  return (
-                                    <div className="flex flex-wrap gap-1 justify-center mt-2 border-t border-slate-100 pt-2">
-                                      {sorted.map(([tipo, count]) => (
-                                        <span
-                                          key={tipo}
-                                          className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                                          style={{ backgroundColor: (ORIGEM_COLORS[tipo] || '#94a3b8') + '22', color: ORIGEM_COLORS[tipo] || '#94a3b8', border: `1px solid ${(ORIGEM_COLORS[tipo] || '#94a3b8')}44` }}
-                                        >
-                                          {tipo}:{count}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Indicador de clicável */}
-                                <div className="mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-center">
-                                  <span className="text-[8px] text-indigo-400 font-bold uppercase tracking-wider">Ver detalhes</span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                                {tipo}: {count}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -5012,149 +5060,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* MODAL: DETALHES DO SETOR */}
-        <AnimatePresence>
-          {selectedSectorDetail && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              {/* Backdrop */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setSelectedSectorDetail(null)}
-                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-              ></motion.div>
 
-              {/* Modal Card */}
-              <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col z-10 max-h-[85vh]"
-              >
-                {/* Header */}
-                {(() => {
-                  const sectorGradients: Record<string, string> = {
-                    "público": "from-blue-500 to-indigo-600",
-                    "privado 1": "from-sky-400 to-blue-500",
-                    "privado 2": "from-teal-400 to-emerald-500",
-                    "privado 3": "from-emerald-500 to-green-600",
-                    "crime": "from-purple-500 to-violet-600"
-                  };
-                  const gradient = sectorGradients[selectedSectorDetail] || "from-slate-500 to-slate-600";
-                  
-                  // Filtrar assessores do setor selecionado
-                  const assessorsInSector = parsedEstagiariosData.filter(
-                    (e) => (e.sector || "público") === selectedSectorDetail
-                  );
-
-                  const totalSectorAnalyzed = assessorsInSector.reduce((sum, e) => sum + (e.totalAnalyzed || 0), 0);
-
-                  return (
-                    <>
-                      <div className={`bg-gradient-to-r ${gradient} text-white px-6 py-5 flex justify-between items-center`}>
-                        <div>
-                          <p className="text-[10px] font-extrabold tracking-widest uppercase opacity-85">
-                            Detalhamento por Setor
-                          </p>
-                          <h3 className="text-xl font-bold uppercase tracking-tight mt-0.5 capitalize">
-                            Setor {selectedSectorDetail}
-                          </h3>
-                        </div>
-                        <button
-                          onClick={() => setSelectedSectorDetail(null)}
-                          className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      </div>
-
-                      {/* Content */}
-                      <div className="p-6 overflow-y-auto flex-1 space-y-6">
-                        {/* Metrics Row */}
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
-                            <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase block">
-                              Total do Setor
-                            </span>
-                            <span className="text-2xl font-light text-slate-800 font-mono mt-1 block">
-                              {totalSectorAnalyzed.toLocaleString("pt-BR")}
-                            </span>
-                          </div>
-                          <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
-                            <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase block">
-                              Assessores Ativos
-                            </span>
-                            <span className="text-2xl font-light text-slate-800 font-mono mt-1 block">
-                              {assessorsInSector.length}
-                            </span>
-                          </div>
-                          <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
-                            <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase block">
-                              Média por Assessor
-                            </span>
-                            <span className="text-2xl font-light text-slate-800 font-mono mt-1 block">
-                              {assessorsInSector.length > 0 
-                                ? Math.round(totalSectorAnalyzed / assessorsInSector.length).toLocaleString("pt-BR") 
-                                : 0}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* List of Assessors */}
-                        <div>
-                          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">
-                            Assessores Integrantes
-                          </h4>
-                          {assessorsInSector.length === 0 ? (
-                            <div className="text-center py-8 text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                              Nenhum assessor cadastrado neste setor.
-                            </div>
-                          ) : (
-                            <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
-                              {assessorsInSector.map((assessor) => {
-                                const weeklyAvg = Math.round((assessor.totalAnalyzed || 0) / 4);
-                                return (
-                                  <div 
-                                    key={assessor.id} 
-                                    className="px-4 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors"
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs uppercase">
-                                        {assessor.name.charAt(0)}
-                                      </div>
-                                      <div>
-                                        <p className="text-sm font-bold text-slate-800">
-                                          {assessor.name}
-                                        </p>
-                                        <p className="text-[10px] text-slate-400 font-semibold uppercase">
-                                          Meta: {assessor.dailyGoal || 25} processos/dia
-                                        </p>
-                                      </div>
-                                    </div>
-
-                                    <div className="text-right">
-                                      <span className="text-sm font-bold text-slate-900 block font-mono">
-                                        {assessor.totalAnalyzed.toLocaleString("pt-BR")} proc.
-                                      </span>
-                                      <span className="text-[10px] text-slate-400 font-semibold block">
-                                        Média Semanal: ~{weeklyAvg} proc.
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
 
         {/* DRAWER/MODAL: DETALHES DO ESTAGIARIO */}
         <AnimatePresence>
