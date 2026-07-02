@@ -349,6 +349,20 @@ export default function App() {
     setGoogleToken(null);
   };
 
+  const handleMockLogin = () => {
+    const mockUser = {
+      id: "mock_developer",
+      email: "desenvolvedor@tjpr.jus.br",
+      user_metadata: {
+        full_name: "Desenvolvedor Local",
+      }
+    };
+    setGoogleUser(mockUser as any);
+    setGoogleToken("mock_token");
+    setHasSpreadsheetAccess(true);
+    showToast("Conectado em modo de teste!", "success");
+  };
+
   // Time Tracker Effect
   useEffect(() => {
     const timer = setInterval(() => {
@@ -3286,6 +3300,13 @@ export default function App() {
               </svg>
             )}
             <span>{isLoggingInGoogle ? "CONECTANDO..." : "ENTRAR COM O GOOGLE"}</span>
+          </button>
+
+          <button
+            onClick={handleMockLogin}
+            className="w-full mt-3 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm tracking-wide transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-[0.98] border border-indigo-500/20"
+          >
+            <span>ENTRAR EM MODO DE TESTE (LOCAL)</span>
           </button>
 
           <div className="mt-10 pt-6 border-t border-white/5 w-full">
