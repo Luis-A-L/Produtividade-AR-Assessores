@@ -1525,6 +1525,12 @@ export default function App() {
     activeEstagiarios: Estagiario[],
     showFeedback: boolean = true,
   ) => {
+    if (googleToken === "mock_token") {
+      if (showFeedback) {
+        showToast("Sincronização de planilha desabilitada no modo de teste local.", "info");
+      }
+      return;
+    }
     if (!urlStr) {
       if (showFeedback)
         alert("Por favor, insira o link da Planilha do Google.");
@@ -2184,6 +2190,7 @@ export default function App() {
 
   // Sincronização automática dinâmica ao iniciar o aplicativo e contínua:
   useEffect(() => {
+    if (googleToken === "mock_token") return;
     // Sincronização inicial (agora ignora autoSyncEnabled para sempre verificar acesso no boot)
     if (
       spreadsheetUrl &&
@@ -2199,10 +2206,12 @@ export default function App() {
     loading,
     isAuthLoading,
     hasAutoSyncedOnStartup,
+    googleToken,
   ]);
 
   // Polling para "tempo real" a cada 60 segundos (diminuído consumo de requisições)
   useEffect(() => {
+    if (googleToken === "mock_token") return;
     let interval: ReturnType<typeof setInterval>;
 
     if (
@@ -2226,6 +2235,7 @@ export default function App() {
     estagiarios,
     hasAutoSyncedOnStartup,
     syncingSheets,
+    googleToken,
   ]);
 
   // Real-time notifications for productivity updates
