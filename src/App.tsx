@@ -154,6 +154,7 @@ export default function App() {
   const [selectedEstagiarioDetail, setSelectedEstagiarioDetail] = useState<
     string | null
   >(null);
+  const [selectedSectorDetail, setSelectedSectorDetail] = useState<string | null>(null);
 
   // Form State - New Entry
   const [formEstagiarioId, setFormEstagiarioId] = useState<string>("");
@@ -3785,7 +3786,11 @@ export default function App() {
                 };
 
                 return Object.entries(sectorSums).map(([sec, val]) => (
-                  <div key={sec} className="bg-white border border-slate-200 p-4 rounded-xl shadow-sm hover:border-slate-350 transition-all flex flex-col justify-between relative overflow-hidden">
+                  <button
+                    key={sec}
+                    onClick={() => setSelectedSectorDetail(sec)}
+                    className="bg-white border border-slate-200 p-4 rounded-xl shadow-sm hover:border-slate-350 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all flex flex-col justify-between text-left relative overflow-hidden cursor-pointer w-full"
+                  >
                     <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${sectorGradients[sec] || "from-slate-400 to-slate-500"}`}></div>
                     <div>
                       <p className="text-[9px] text-slate-400 font-extrabold tracking-widest uppercase mb-1 capitalize">
@@ -3796,9 +3801,9 @@ export default function App() {
                       </span>
                     </div>
                     <p className="text-[9px] text-slate-500 mt-1 font-semibold uppercase tracking-wider">
-                      Processos no mês
+                      Clique p/ Detalhes
                     </p>
-                  </div>
+                  </button>
                 ));
               })()}
             </div>
@@ -5002,6 +5007,150 @@ export default function App() {
                     </button>
                   </div>
                 </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* MODAL: DETALHES DO SETOR */}
+        <AnimatePresence>
+          {selectedSectorDetail && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setSelectedSectorDetail(null)}
+                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              ></motion.div>
+
+              {/* Modal Card */}
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col z-10 max-h-[85vh]"
+              >
+                {/* Header */}
+                {(() => {
+                  const sectorGradients: Record<string, string> = {
+                    "público": "from-blue-500 to-indigo-600",
+                    "privado 1": "from-sky-400 to-blue-500",
+                    "privado 2": "from-teal-400 to-emerald-500",
+                    "privado 3": "from-emerald-500 to-green-600",
+                    "crime": "from-purple-500 to-violet-600"
+                  };
+                  const gradient = sectorGradients[selectedSectorDetail] || "from-slate-500 to-slate-600";
+                  
+                  // Filtrar assessores do setor selecionado
+                  const assessorsInSector = parsedEstagiariosData.filter(
+                    (e) => (e.sector || "público") === selectedSectorDetail
+                  );
+
+                  const totalSectorAnalyzed = assessorsInSector.reduce((sum, e) => sum + (e.totalAnalyzed || 0), 0);
+
+                  return (
+                    <>
+                      <div className={`bg-gradient-to-r ${gradient} text-white px-6 py-5 flex justify-between items-center`}>
+                        <div>
+                          <p className="text-[10px] font-extrabold tracking-widest uppercase opacity-85">
+                            Detalhamento por Setor
+                          </p>
+                          <h3 className="text-xl font-bold uppercase tracking-tight mt-0.5 capitalize">
+                            Setor {selectedSectorDetail}
+                          </h3>
+                        </div>
+                        <button
+                          onClick={() => setSelectedSectorDetail(null)}
+                          className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {/* Content */}
+                      <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                        {/* Metrics Row */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
+                            <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase block">
+                              Total do Setor
+                            </span>
+                            <span className="text-2xl font-light text-slate-800 font-mono mt-1 block">
+                              {totalSectorAnalyzed.toLocaleString("pt-BR")}
+                            </span>
+                          </div>
+                          <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
+                            <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase block">
+                              Assessores Ativos
+                            </span>
+                            <span className="text-2xl font-light text-slate-800 font-mono mt-1 block">
+                              {assessorsInSector.length}
+                            </span>
+                          </div>
+                          <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
+                            <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase block">
+                              Média por Assessor
+                            </span>
+                            <span className="text-2xl font-light text-slate-800 font-mono mt-1 block">
+                              {assessorsInSector.length > 0 
+                                ? Math.round(totalSectorAnalyzed / assessorsInSector.length).toLocaleString("pt-BR") 
+                                : 0}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* List of Assessors */}
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">
+                            Assessores Integrantes
+                          </h4>
+                          {assessorsInSector.length === 0 ? (
+                            <div className="text-center py-8 text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                              Nenhum assessor cadastrado neste setor.
+                            </div>
+                          ) : (
+                            <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+                              {assessorsInSector.map((assessor) => {
+                                const weeklyAvg = Math.round((assessor.totalAnalyzed || 0) / 4);
+                                return (
+                                  <div 
+                                    key={assessor.id} 
+                                    className="px-4 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs uppercase">
+                                        {assessor.name.charAt(0)}
+                                      </div>
+                                      <div>
+                                        <p className="text-sm font-bold text-slate-800">
+                                          {assessor.name}
+                                        </p>
+                                        <p className="text-[10px] text-slate-400 font-semibold uppercase">
+                                          Meta: {assessor.dailyGoal || 25} processos/dia
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="text-right">
+                                      <span className="text-sm font-bold text-slate-900 block font-mono">
+                                        {assessor.totalAnalyzed.toLocaleString("pt-BR")} proc.
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 font-semibold block">
+                                        Média Semanal: ~{weeklyAvg} proc.
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </motion.div>
             </div>
           )}
