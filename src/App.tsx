@@ -191,8 +191,7 @@ export default function App() {
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Google Sheets Sync State
-  const DEFAULT_SHEET_URL =
-    "https://docs.google.com/spreadsheets/d/1hTAx1DO1x4rI8vJ0IQUKEyZqrws2FtcJMSPwFtt-r78/edit?pli=1&gid=548073705#gid=548073705";
+  const DEFAULT_SHEET_URL = "";
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState<boolean>(false);
   const [spreadsheetUrl, setSpreadsheetUrl] =
     useState<string>(DEFAULT_SHEET_URL);
