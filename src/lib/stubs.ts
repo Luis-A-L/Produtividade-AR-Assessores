@@ -310,19 +310,23 @@ export const batchUpsertAssessores = async (items: Assessor[]): Promise<void> =>
 
 export const batchUpsertEntries = async (items: Omit<ProductivityEntry, 'id'>[]): Promise<void> => {
   if (!items.length) return
-  const rows = items.map((e) => ({
-    assessor_id: e.assessorId || (e as any).estagiarioId,
-    date: e.date,
-    count: e.count,
-    type_breakdown: e.typeBreakdown ?? {},
-  }))
+  const rows = items.map((e) => {
+    const aId = e.assessorId || (e as any).estagiarioId;
+    return {
+      id: `${aId}_${e.date}`,
+      assessor_id: aId,
+      date: e.date,
+      count: e.count,
+      type_breakdown: e.typeBreakdown ?? {},
+    };
+  })
 
   // Upsert em grupos de 500
   for (let i = 0; i < rows.length; i += 500) {
     const chunk = rows.slice(i, i + 500)
     const { error } = await supabase
       .from('productivity_entries')
-      .upsert(chunk, { onConflict: 'assessor_id,date' })
+      .upsert(chunk, { onConflict: 'id' })
 
     if (error) console.error('Erro no batch upsert de entries:', error)
   }

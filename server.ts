@@ -22,7 +22,7 @@ const fetchWithTimeout = async (url: string, options: any = {}, timeoutMs = 2500
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = 3005;
 
   app.use(express.json());
 

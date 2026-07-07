@@ -14,8 +14,8 @@ import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 
 // ─── CONFIGURAÇÕES ───────────────────────────────────────────
-const SPREADSHEET_ID = '1hTAx1DO1x4rI8vJ0IQUKEyZqrws2FtcJMSPwFtt-r78';
-const SHEET_NAME     = 'Controle detalhado';            // Nome exato da aba
+const SPREADSHEET_ID = '17MlkyQC2GnrK2f-mxZQZusv7hORoBZRQpcVAT6bbRIQ';
+const SHEET_NAME     = 'Dados-GR';                      // Nome exato da aba
 const DATE_FROM      = '2026-06-01';
 const DATE_TO        = '2026-06-19';
 
@@ -197,7 +197,7 @@ const parseCsv = (csv: string, assessorMap: Map<string, string>): Entry[] => {
 // ─── MAIN ─────────────────────────────────────────────────────
 const main = async () => {
   console.log('╔══════════════════════════════════════════════════╗');
-  console.log('║   SYNC: Aba "Controle" → Supabase               ║');
+  console.log('║   SYNC: Aba "Dados-GR" → Supabase               ║');
   console.log(`║   Período: ${DATE_FROM} a ${DATE_TO}     ║`);
   console.log('╚══════════════════════════════════════════════════╝\n');
 

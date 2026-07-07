@@ -191,7 +191,8 @@ export default function App() {
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Google Sheets Sync State
-  const DEFAULT_SHEET_URL = "";
+  const DEFAULT_SHEET_URL =
+    "https://docs.google.com/spreadsheets/d/17MlkyQC2GnrK2f-mxZQZusv7hORoBZRQpcVAT6bbRIQ/edit?gid=1254289010#gid=1254289010";
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState<boolean>(false);
   const [spreadsheetUrl, setSpreadsheetUrl] =
     useState<string>(DEFAULT_SHEET_URL);
@@ -229,7 +230,7 @@ export default function App() {
   const [sheetsMessage, setSheetsMessage] = useState<string>("");
   const [sheetSyncError, setSheetSyncError] = useState<string>("");
   const [pasteDataText, setPasteDataText] = useState<string>("");
-  const [selectedSheetName, setSelectedSheetName] = useState<string>("Controle detalhado");
+  const [selectedSheetName, setSelectedSheetName] = useState<string>("Dados-GR");
 
 
   const [detailTab, setDetailTab] = useState<"month" | "day">("month");
@@ -510,8 +511,8 @@ export default function App() {
         setAutoSyncEnabled(
           settingsData.autoSync !== undefined ? settingsData.autoSync : true,
         );
-        // Sempre usa "Controle detalhado" — ignorar valor antigo "Controle" do banco
-        setSelectedSheetName("Controle detalhado");
+        // Sempre usa "Dados-GR" — conforme a nova especificação
+        setSelectedSheetName("Dados-GR");
         setLastSyncTime(settingsData.lastSync || "");
       }
 
@@ -693,26 +694,13 @@ export default function App() {
       if (norm.includes("modelo") || norm.includes("template")) {
         return;
       }
-      if (
-        /estag|membro|usuario|cadastro|user|integrante|funcionario/i.test(norm)
-      ) {
-        estagiariosSheetContent = content;
-        estagiariosSheetName = name;
-      } else if (targetControleSheetName) {
-        if (norm === normalizeText(targetControleSheetName)) {
-          allControleSheets.push({ name, content });
-        }
-      } else if (norm.startsWith("controle")) {
-        // Aceita "Controle", "Controle detalhado", etc.
+      // Processa exclusivamente a aba Dados-GR
+      if (norm === "dados-gr") {
         allControleSheets.push({ name, content });
       }
     });
 
-    const controleSheets = targetControleSheetName
-      ? allControleSheets
-      : (allControleSheets.some((s) => normalizeText(s.name).includes("detalh"))
-          ? allControleSheets.filter((s) => normalizeText(s.name).includes("detalh"))
-          : allControleSheets);
+    const controleSheets = allControleSheets;
 
     const estagiariosFromSheet: Estagiario[] = [];
     const estagiariosCreatedTemp: string[] = [];
@@ -978,11 +966,36 @@ export default function App() {
       if (lines.length <= 1) return;
 
       const delimiter = getDelimiter(cContent);
+
+      const parseCSVLine = (lineStr: string, delim: string): string[] => {
+        const tokens: string[] = [];
+        let cur = "";
+        let inQ = false;
+        for (let i = 0; i < lineStr.length; i++) {
+          const c = lineStr[i];
+          if (c === '"') {
+            if (inQ && lineStr[i+1] === '"') {
+              cur += '"';
+              i++;
+            } else {
+              inQ = !inQ;
+            }
+          } else if (c === delim && !inQ) {
+            tokens.push(cur.trim());
+            cur = "";
+          } else {
+            cur += c;
+          }
+        }
+        tokens.push(cur.trim());
+        return tokens;
+      };
+
       const rows = lines.map((line) =>
-        line.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, "")),
+        parseCSVLine(line, delimiter).map((c) => c.trim().replace(/^["']|["']$/g, "")),
       );
 
-      debugRows = rows.slice(0, 10);
+      debugRows = rows.slice(0, 15);
 
       const normalizeTypeCode = (code: string): string => {
         return (code || "")
@@ -990,471 +1003,170 @@ export default function App() {
           .toUpperCase();
       };
 
-      // 3.0 Detectar formato DETALHADO ("Controle detalhado")
-      // Identifica por subcolunas de tipo como CV, RCV, DCV, CR, RCR, DCR, REDCV, REDCR, REVCR
-      const DETAIL_TYPE_CODES = new Set(["CV", "RCV", "DCV", "CR", "RCR", "DCR", "REDCV", "REDCR", "REVCR"]);
-      let typesRowIdx = -1;
-      let maxTypeCodeCount = -1;
-      for (let i = 0; i < Math.min(15, rows.length); i++) {
-        const typeCodeCount = rows[i].filter(
-          (c) => DETAIL_TYPE_CODES.has(normalizeTypeCode(c || ""))
-        ).length;
-        if (typeCodeCount >= 3 && typeCodeCount > maxTypeCodeCount) {
-          maxTypeCodeCount = typeCodeCount;
-          typesRowIdx = i;
+      // Encontrar a linha de cabeçalho
+      let headerRowIdx = -1;
+      let assessorColIdx = -1;
+      let grupoColIdx = -1;
+      const dayColsMap: { [day: number]: number } = {};
+
+      for (let r = 0; r < Math.min(rows.length, 15); r++) {
+        const row = rows[r].map(h => normalizeText(h || ""));
+        const assIdx = row.findIndex(h => h === "assessor");
+        const grIdx = row.findIndex(h => h === "grupo");
+        if (assIdx !== -1 && grIdx !== -1) {
+          headerRowIdx = r;
+          assessorColIdx = assIdx;
+          grupoColIdx = grIdx;
+
+          // Mapear as colunas dos dias de 1 a 31
+          for (let d = 1; d <= 31; d++) {
+            const dayStr = String(d);
+            const colIdx = rows[r].findIndex(h => h.trim() === dayStr);
+            if (colIdx !== -1) {
+              dayColsMap[d] = colIdx;
+            }
+          }
+          break;
         }
       }
 
-      if (typesRowIdx !== -1) {
-        // === FORMATO DETALHADO (subcolunas por tipo) ===
-        console.log(`[parseSheetData] Formato DETALHADO detectado na aba "${cName}", linha de tipos: ${typesRowIdx}`);
-        diagDetalhado = true;
-        diagTypesRowIdx = typesRowIdx;
-        diagTotalRows = rows.length;
-
-        // Linha de nomes: procura a linha de nomes subindo a partir de typesRowIdx
-        let namesRowIdx = typesRowIdx > 0 ? typesRowIdx - 1 : typesRowIdx;
-        for (let r = typesRowIdx - 1; r >= 0; r--) {
-          const row = rows[r];
-          const textCellCount = row.filter((c) => {
-            const trimmed = (c || "").trim();
-            return trimmed && !/^\d+(\.\d+)?%?$/.test(trimmed) && !DETAIL_TYPE_CODES.has(normalizeTypeCode(trimmed));
-          }).length;
-          if (textCellCount >= 3) {
-            namesRowIdx = r;
-            break;
-          }
-        }
-
-        const namesRow = rows[namesRowIdx];
-        const typesRow = rows[typesRowIdx];
-        const totalCols = Math.max(namesRow.length, typesRow.length);
-
-        // Forward-fill nomes de usuários (células mescladas: nome só na 1ª coluna, restante vazio)
-        let currentUserName = "";
-        const colUserMap: string[] = new Array(totalCols).fill("");
-        for (let c = 0; c < totalCols; c++) {
-          const cell = (namesRow[c] || "").trim();
-          // Atualiza nome corrente se a célula tem conteúdo e não é número puro (total) nem código de tipo
-          if (cell && !/^\d+(\.\d+)?%?$/.test(cell) && !DETAIL_TYPE_CODES.has(normalizeTypeCode(cell))) {
-            currentUserName = cell;
-          }
-          colUserMap[c] = currentUserName;
-        }
-
-        // Detectar a coluna de datas de forma robusta no formato detalhado
-        let dateColIdx = 0; // fallback padrão
-        let maxDateCount = 0;
-        const colCount = rows.reduce((max, r) => Math.max(max, r.length), 0);
-
-        // Varre as primeiras 6 colunas (A-F) para encontrar a coluna de datas
-        for (let c = 0; c < Math.min(6, colCount); c++) {
-          let dateCount = 0;
-          for (let r = typesRowIdx + 1; r < rows.length; r++) {
-            const row = rows[r];
-            if (c < row.length && row[c] && parseDateToISO(row[c])) {
-              dateCount++;
-            }
-          }
-          if (dateCount > maxDateCount) {
-            maxDateCount = dateCount;
-            dateColIdx = c;
-          }
-        }
-        console.log(`[parseSheetData] Coluna de datas detectada no formato detalhado: coluna índice ${dateColIdx} (${maxDateCount} datas válidas)`);
-
-        // Mapear usuário -> lista de índices de colunas das subcolunas
-        const userColsMap: { [userId: string]: { name: string; cols: number[] } } = {};
-        console.log(`[DEBUG] Tipos detectados na aba "${cName}":`, typesRow.filter(c => {
-          const norm = normalizeTypeCode(c || "");
-          return norm && DETAIL_TYPE_CODES.has(norm);
-        }).join(", "));
-        console.log(`[DEBUG] Todos os cabeçalhos da linha de tipos:`, typesRow);
-        for (let c = 0; c < typesRow.length; c++) {
-          if (c === dateColIdx) continue; // Ignorar explicitamente a coluna de data para evitar parsing indevido
-          const typeCode = (typesRow[c] || "").trim();
-          const typeCodeNorm = normalizeTypeCode(typeCode);
-          const userName = colUserMap[c] || "";
-          // Só processa colunas que são códigos de tipo conhecidos E têm nome de usuário
-          if (!typeCode || !DETAIL_TYPE_CODES.has(typeCodeNorm)) continue;
-          if (!userName) continue;
-
-          let userId = findEstagiarioIdLocal(userName);
-          if (!userId) {
-            const generatedId = userName
-              .toLowerCase()
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .replace(/\s+/g, "_")
-              .replace(/[^a-z0-9_]/g, "");
-            if (!generatedId || generatedId.length < 2) continue;
-            if (!estagiariosCreatedTemp.includes(userName))
-              estagiariosCreatedTemp.push(userName);
-            userId = generatedId;
-          }
-
-          if (SKIP_IDS.has(userId)) continue;
-
-          if (!userColsMap[userId]) userColsMap[userId] = { name: userName, cols: [] };
-          userColsMap[userId].cols.push(c);
-        }
-
-        console.log(`[parseSheetData] Usuários detectados no formato detalhado:`, Object.keys(userColsMap));
-        diagDateColIdx = dateColIdx;
-        diagMaxDateCount = maxDateCount;
-        diagMappedUsers = Object.keys(userColsMap);
-
-        if (rows[typesRowIdx + 1]) {
-          diagFirstRowDump = rows[typesRowIdx + 1].slice(0, 10).join(" | ");
-          diagFirstDateRaw = rows[typesRowIdx + 1][dateColIdx] || "";
-          diagFirstDateIso = parseDateToISO(diagFirstDateRaw) || "null";
-        }
-
-        // Processar linhas de dados (a partir da linha após a de tipos)
-        for (let r = typesRowIdx + 1; r < rows.length; r++) {
-          const row = rows[r];
-          if (dateColIdx >= row.length) continue;
-          const rawDate = row[dateColIdx] || "";
-          const isoDate = parseDateToISO(rawDate);
-          if (!isoDate || isoDate < "2026-04-01") continue;
-
-          Object.entries(userColsMap).forEach(([userId, { cols }]) => {
-            if (individualEstagiarioIds.has(userId)) return;
-            let total = 0;
-            const typeBreakdown: Record<string, number> = {};
-
-            cols.forEach((colIdx) => {
-              if (colIdx === dateColIdx) return; // Segurança extra
-              if (colIdx < row.length) {
-                const rawVal = (row[colIdx] || "").replace(/\s/g, "").replace(",", ".");
-                const num = Math.round(parseFloat(rawVal));
-                if (!isNaN(num) && num > 0) {
-                  total += num;
-
-                  // Acumular por tipo (CV, RCV, DCV, CR, RCR, DCR, REDCV, REDCR, REVCR)
-                  const typeCode = normalizeTypeCode(typesRow[colIdx] || "");
-                  if (typeCode) {
-                    typeBreakdown[typeCode] = (typeBreakdown[typeCode] || 0) + num;
-                  }
-
-                  // Gerar processos detalhados fictícios correspondentes (mantido para compatibilidade)
-                  for (let i = 1; i <= num; i++) {
-                    parsedDetailedProcesses.push({
-                      estagiarioId: userId,
-                      date: isoDate,
-                      numeroProcesso: `Proc-${userId.substring(0, 3).toUpperCase()}-${typeCode}-${isoDate.replace(/-/g, "")}-${i}`,
-                      origem: typeCode || "CV",
-                    });
-                  }
-                }
-              }
-            });
-            if (total > 0) {
-              parsedEntries.push({
-                estagiarioId: userId,
-                date: isoDate,
-                count: total,
-                typeBreakdown,
-              });
-            }
-          });
-        }
-        return; // Concluiu leitura desta aba no formato detalhado
+      if (headerRowIdx === -1 || assessorColIdx === -1) {
+        console.error("[parseSheetData] Não foi possível encontrar a linha de cabeçalho da aba Dados-GR.");
+        return;
       }
 
-      // 3.1 Identificar coluna de datas (aquela com maior quantidade de entradas de datas válidas)
-      let dateColIdx = -1;
-      let maxDateCount = 0;
-      const colCount = rows.reduce((max, r) => Math.max(max, r.length), 0);
+      // Processar linhas de dados abaixo do cabeçalho
+      let currentGrupo = "";
 
-      for (let c = 0; c < colCount; c++) {
-        let dateCount = 0;
-        rows.forEach((row) => {
-          if (c < row.length && row[c] && parseDateToISO(row[c])) {
-            dateCount++;
-          }
-        });
-        if (dateCount > maxDateCount) {
-          maxDateCount = dateCount;
-          dateColIdx = c;
-        }
-      }
-
-      // Se não encontrou nenhuma coluna com datas válidas, pula esta aba
-      if (dateColIdx === -1) return;
-
-      // DETERMINAÇÃO DO FORMATO
-      // Tenta identificar se a tabela está no formato de lista flat (ex: Data, Estagiário, Quantidade)
-      if (rows.length > 0) {
-        const firstRows = [rows[0]];
-        if (rows[1]) firstRows.push(rows[1]); // Look at first 2 rows for headers
-
-        let estagiarioColIdx = -1;
-        let qtdColIdx = -1;
-        let origemColIdx = -1;
-        let headerRowIdxToSkip = -1;
-
-        for (let i = 0; i < firstRows.length; i++) {
-          const headerRow = firstRows[i].map((h) => normalizeText(h || ""));
-          const eIdx = headerRow.findIndex(
-            (h) =>
-              h.includes("nome") ||
-              h.includes("estagiario") ||
-              h.includes("autor"),
-          );
-          const qIdx = headerRow.findIndex(
-            (h) =>
-              h.includes("qtd") ||
-              h.includes("quantidade") ||
-              h.includes("processos") ||
-              h.includes("total"),
-          );
-          const oIdx = headerRow.findIndex(
-            (h) =>
-              h.includes("origem") ||
-              h.includes("tipo") ||
-              h.includes("categoria") ||
-              h.includes("setor"),
-          );
-          if (eIdx !== -1 && qIdx !== -1) {
-            estagiarioColIdx = eIdx;
-            qtdColIdx = qIdx;
-            origemColIdx = oIdx;
-            headerRowIdxToSkip = i;
-            break;
-          }
-        }
-
-        if (estagiarioColIdx !== -1 && qtdColIdx !== -1 && dateColIdx !== -1) {
-          // Processamento para tabela no formato FLAT LIST
-          console.log(`[parseSheetData] Formato FLAT detectado na aba "${cName}": dateCol=${dateColIdx}, nomeCol=${estagiarioColIdx}, qtdCol=${qtdColIdx}, headerRow=${headerRowIdxToSkip}`);
-          console.log(`[parseSheetData] Header detectado:`, rows[headerRowIdxToSkip]);
-          // Mostrar os primeiros 3 valores da coluna de qtd para diagnóstico
-          for (let r = headerRowIdxToSkip + 1; r < Math.min(headerRowIdxToSkip + 4, rows.length); r++) {
-            const row = rows[r];
-            console.log(`[parseSheetData] Linha ${r}: nome="${row[estagiarioColIdx]}", qtd="${row[qtdColIdx]}", date="${row[dateColIdx]}"`);
-          }
-
-          for (let r = headerRowIdxToSkip + 1; r < rows.length; r++) {
-            const row = rows[r];
-            const rawDate = row[dateColIdx] || "";
-            const isoDate = parseDateToISO(rawDate);
-            if (!isoDate || isoDate < "2026-04-01")
-              continue;
-
-            const estagiarioName = (row[estagiarioColIdx] || "").trim();
-            const qtdStr = row[qtdColIdx];
-            if (!estagiarioName || estagiarioName === "" || !qtdStr) continue;
-
-            let estagiarioId = findEstagiarioIdLocal(estagiarioName);
-            if (!estagiarioId) {
-              const generatedId = estagiarioName
-                .toLowerCase()
-                .normalize("NFD")
-                .replace(/[\u0300-\u036f]/g, "")
-                .replace(/\s+/g, "_")
-                .replace(/[^a-z0-9_]/g, "");
-              if (!generatedId || generatedId.length < 2) continue;
-              if (!estagiariosCreatedTemp.includes(estagiarioName))
-                estagiariosCreatedTemp.push(estagiarioName);
-              estagiarioId = generatedId;
-            }
-
-            if (SKIP_IDS.has(estagiarioId) || individualEstagiarioIds.has(estagiarioId)) continue;
-
-            const cleanedVal = qtdStr.replace(/\s/g, "").replace(",", ".");
-            const parsedVal = Math.round(parseFloat(cleanedVal));
-            if (!isNaN(parsedVal) && parsedVal > 0) {
-              parsedEntries.push({
-                estagiarioId,
-                date: isoDate,
-                count: parsedVal,
-              });
-            }
-          }
-          return; // Concluiu a leitura desta aba em formato flat
-        }
-      }
-
-      // 3.2 Identificar a linha dos nomes de estagiários (Formato Cruzado/Matriz)
-      let nameRowIdx = -1;
-      let maxNameScore = -1;
-
-      for (let r = 0; r < rows.length; r++) {
+      for (let r = headerRowIdx + 1; r < rows.length; r++) {
         const row = rows[r];
-        // Se essa linha já é uma linha cheia de datas, não é a de nomes
-        if (row[dateColIdx] && parseDateToISO(row[dateColIdx])) {
+        if (assessorColIdx >= row.length) continue;
+
+        const assessorName = row[assessorColIdx] || "";
+        const normName = normalizeText(assessorName);
+        if (!assessorName || normName === "assessor" || normName === "total" || normName === "nº" || /^\d+$/.test(assessorName)) {
           continue;
         }
 
-        let score = 0;
-        row.forEach((cell, cIdx) => {
-          if (cIdx === dateColIdx) return;
-          const trimmed = cell.trim();
-          if (!trimmed) return;
-
-          // Se bate exatamente com um estagiário cadastrado ou pré-carregado
-          const matchesExisting = combinedCurrentAndSheetEstagiarios.some(
-            (e) => normalizeText(e.name) === normalizeText(trimmed),
-          );
-
-          if (matchesExisting) {
-            score += 15; // Pontuação altíssima para estagiários pré-existentes
-          } else if (
-            /^[A-Za-zÀ-ÖØ-öø-ÿ\s\.\-]{3,25}$/.test(trimmed) &&
-            !/^\d+$/.test(trimmed) &&
-            !trimmed.includes("/") &&
-            !trimmed.includes("-")
-          ) {
-            const normTrimmed = normalizeText(trimmed);
-            const ignoreWords = [
-              "total",
-              "quantidade",
-              "data",
-              "obs",
-              "comentario",
-              "concluido",
-              "meta",
-              "soma",
-              "segunda",
-              "terca",
-              "quarta",
-              "quinta",
-              "sexta",
-              "sabado",
-              "domingo",
-              "porcent",
-              "percent",
-              "media",
-              "dias",
-              "mes",
-              "ano",
-              "semana",
-              "revisao",
-              "ajuste",
-            ];
-            if (!ignoreWords.some((w) => normTrimmed.includes(w))) {
-              score += 2;
-            }
-          }
-        });
-
-        if (score > maxNameScore) {
-          maxNameScore = score;
-          nameRowIdx = r;
-        }
-      }
-
-      // Se não encontrou uma linha de nomes satisfatória, usamos a linha 0 como padrão
-      if (nameRowIdx === -1) {
-        nameRowIdx = 0;
-      }
-
-      const nameRow = rows[nameRowIdx];
-
-      // 3.3 Mapear colunas que contêm cabeçalhos válidos de estagiários
-      const mappedCols: {
-        colIndex: number;
-        estagiarioId: string;
-        estagiarioName: string;
-      }[] = [];
-      nameRow.forEach((cell, cIdx) => {
-        if (cIdx === dateColIdx) return;
-        const estagiarioName = cell.trim();
-        if (!estagiarioName) return;
-
-        // Ignora palavras técnicas comuns para colunas (ex: "total", "observações", etc.)
-        const normName = normalizeText(estagiarioName);
-        const ignoreWords = [
-          "total",
-          "quantidade",
-          "data",
-          "obs",
-          "comentario",
-          "concluido",
-          "meta",
-          "soma",
-          "segunda",
-          "terca",
-          "quarta",
-          "quinta",
-          "sexta",
-          "sabado",
-          "domingo",
-          "porcent",
-          "percent",
-          "media",
-          "dias",
-          "mes",
-          "ano",
-          "semana",
-          "revisao",
-          "ajuste",
-          "dia",
-        ];
-
-        if (
-          ignoreWords.some((w) => normName.includes(w)) ||
-          normName.length < 3
-        ) {
-          return;
+        const rawGrupo = grupoColIdx !== -1 && grupoColIdx < row.length ? row[grupoColIdx].trim() : "";
+        if (rawGrupo) {
+          currentGrupo = rawGrupo;
         }
 
-        // Ignora colunas que são puramente números (ex: cabeçalhos extras como o total vertical da planilha "192")
-        if (
-          /^\d+$/.test(estagiarioName) ||
-          /^[\d\.\,\%]+$/.test(estagiarioName)
-        ) {
-          return;
-        }
-
-        let estagiarioId = findEstagiarioIdLocal(estagiarioName);
-        if (!estagiarioId) {
-          const generatedId = estagiarioName
+        let assessorId = findEstagiarioIdLocal(assessorName);
+        if (!assessorId) {
+          const generatedId = assessorName
             .toLowerCase()
             .normalize("NFD")
             .replace(/[\u0300-\u036f]/g, "")
             .replace(/\s+/g, "_")
             .replace(/[^a-z0-9_]/g, "");
-          if (!generatedId) return; // Ignore columns that generate empty/invalid identifiers like blank spaces or notes
-          estagiariosCreatedTemp.push(estagiarioName);
-          estagiarioId = generatedId;
-        }
-        if (estagiarioId) {
-          mappedCols.push({ colIndex: cIdx, estagiarioId, estagiarioName });
-        }
-      });
+          if (!generatedId || generatedId.length < 2) continue;
 
-      // 3.4 Processar as linhas de dados (tendo data válida em `dateColIdx`)
-      rows.forEach((row) => {
-        if (dateColIdx >= row.length) return;
-        const rawDate = row[dateColIdx];
-        const isoDate = parseDateToISO(rawDate);
-        if (!isoDate || isoDate < "2026-04-01")
-          return;
+          if (!estagiariosCreatedTemp.includes(assessorName)) {
+            estagiariosCreatedTemp.push(assessorName);
+          }
+          assessorId = generatedId;
 
-        mappedCols.forEach(({ colIndex, estagiarioId }) => {
-          if (SKIP_IDS.has(estagiarioId) || individualEstagiarioIds.has(estagiarioId)) {
-            return;
+          let parsedSector: "público" | "privado 1" | "privado 2" | "privado 3" | "crime" = "público";
+          const normGrupo = normalizeText(currentGrupo);
+          if (normGrupo === "dp") {
+            parsedSector = "público";
+          } else if (normGrupo === "dp 1" || normGrupo === "dp1" || normGrupo === "dp i" || normGrupo === "dpi" || normGrupo === "dp l" || normGrupo === "dpl") {
+            parsedSector = "privado 1";
+          } else if (normGrupo === "dp 2" || normGrupo === "dp2" || normGrupo === "dp ii" || normGrupo === "dpii" || normGrupo === "dp ll" || normGrupo === "dpll") {
+            parsedSector = "privado 2";
+          } else if (normGrupo === "dp 3" || normGrupo === "dp3" || normGrupo === "dp iii" || normGrupo === "dpiii" || normGrupo === "dp lll" || normGrupo === "dplll") {
+            parsedSector = "privado 3";
+          } else if (normGrupo === "dc") {
+            parsedSector = "crime";
           }
 
-          if (colIndex < row.length) {
-            const rawVal = row[colIndex];
+          if (!estagiariosFromSheet.some(x => x.id === assessorId)) {
+            estagiariosFromSheet.push({
+              id: assessorId,
+              name: assessorName,
+              sector: parsedSector,
+              dailyGoal: 25,
+              matricula: "",
+            });
+            combinedCurrentAndSheetEstagiarios.push({
+              id: assessorId,
+              name: assessorName,
+              sector: parsedSector,
+              dailyGoal: 25,
+              matricula: "",
+            });
+          }
+        } else {
+          let parsedSector: "público" | "privado 1" | "privado 2" | "privado 3" | "crime" = "público";
+          const normGrupo = normalizeText(currentGrupo);
+          if (normGrupo === "dp") {
+            parsedSector = "público";
+          } else if (normGrupo === "dp 1" || normGrupo === "dp1" || normGrupo === "dp i" || normGrupo === "dpi" || normGrupo === "dp l" || normGrupo === "dpl") {
+            parsedSector = "privado 1";
+          } else if (normGrupo === "dp 2" || normGrupo === "dp2" || normGrupo === "dp ii" || normGrupo === "dpii" || normGrupo === "dp ll" || normGrupo === "dpll") {
+            parsedSector = "privado 2";
+          } else if (normGrupo === "dp 3" || normGrupo === "dp3" || normGrupo === "dp iii" || normGrupo === "dpiii" || normGrupo === "dp lll" || normGrupo === "dplll") {
+            parsedSector = "privado 3";
+          } else if (normGrupo === "dc") {
+            parsedSector = "crime";
+          }
 
-            if (rawVal) {
-              const cleanedVal = rawVal.replace(/\s/g, "").replace(",", ".");
-              const parsedVal = Math.round(parseFloat(cleanedVal));
-              if (!isNaN(parsedVal) && parsedVal >= 0) {
-                parsedEntries.push({
-                  estagiarioId,
-                  date: isoDate,
-                  count: parsedVal,
-                });
-              }
+          const existingIdx = estagiariosFromSheet.findIndex(x => x.id === assessorId);
+          if (existingIdx !== -1) {
+            estagiariosFromSheet[existingIdx].sector = parsedSector;
+          } else {
+            const currentObj = currentEstagiarios.find(x => x.id === assessorId);
+            if (currentObj && currentObj.sector !== parsedSector) {
+              estagiariosFromSheet.push({
+                ...currentObj,
+                sector: parsedSector,
+              });
             }
           }
-        });
-      });
+        }
+
+        if (SKIP_IDS.has(assessorId)) continue;
+
+        for (let d = 1; d <= 31; d++) {
+          const colIdx = dayColsMap[d];
+          if (colIdx === undefined || colIdx >= row.length) continue;
+
+          const rawVal = row[colIdx];
+          let parsedVal = 0;
+          if (rawVal) {
+            const cleanedVal = rawVal.replace(/\s/g, "").replace(",", ".");
+            const num = Math.round(parseFloat(cleanedVal));
+            if (!isNaN(num) && num >= 0) {
+              parsedVal = num;
+            }
+          }
+
+          const monthPrefix = selectedMonth || getCurrentMonth();
+          const dayStr = String(d).padStart(2, "0");
+          const isoDate = `${monthPrefix}-${dayStr}`;
+
+          if (isoDate === "2026-06-22") continue;
+
+          parsedEntries.push({
+            estagiarioId: assessorId,
+            date: isoDate,
+            count: parsedVal,
+          });
+
+          if (parsedVal > 0) {
+            for (let i = 1; i <= parsedVal; i++) {
+              parsedDetailedProcesses.push({
+                estagiarioId: assessorId,
+                date: isoDate,
+                numeroProcesso: `Proc-${assessorId.substring(0, 3).toUpperCase()}-${isoDate.replace(/-/g, "")}-${i}`,
+                origem: "CV",
+              });
+            }
+          }
+        }
+      }
     });
 
     // ELIMINATE DUPLICATES AND REDUNDANCIES:
@@ -1614,18 +1326,9 @@ export default function App() {
       setSheetsMessage(parseResult.message);
       setSheetSyncError("");
 
-      // Salva no Firestore — sincronização manual salva tudo, automática salva só o dia atual
+      // Salva no Firestore — sincronização completa para ambas manual e automática
       let finalEntriesToSave = parseResult.entries;
       let finalDetailedProcesses = parseResult.detailedProcesses || [];
-      if (!showFeedback) {
-        const todayStr = getCurrentDate();
-        finalEntriesToSave = parseResult.entries.filter(
-          (e) => e.date === todayStr
-        );
-        finalDetailedProcesses = (parseResult.detailedProcesses || []).filter(
-          (p) => p.date === todayStr
-        );
-      }
 
       await saveSyncedDataToFirestore(
         finalEntriesToSave,
@@ -2123,8 +1826,8 @@ export default function App() {
       } else if (key === "googleSheet") {
         setSpreadsheetUrl(value?.url || DEFAULT_SHEET_URL);
         setAutoSyncEnabled(value?.autoSync !== undefined ? value.autoSync : true);
-        // Sempre usa "Controle detalhado" para a aba, ignorando valor antigo do banco
-        setSelectedSheetName("Controle detalhado");
+        // Sempre usa "Dados-GR" para a aba, ignorando valor antigo do banco
+        setSelectedSheetName("Dados-GR");
         setLastSyncTime(value?.lastSync || "");
       }
     });
@@ -4074,20 +3777,18 @@ export default function App() {
                         <Grid className="w-4 h-4 text-emerald-500" />
                         DISTRIBUIÇÃO POR CATEGORIA
                       </h2>
-                      <div className="h-[200px] w-full flex-1 flex items-center justify-center relative">
+                      <div className="h-[220px] w-full relative flex items-center justify-center">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
                               data={distributionChartData}
                               cx="50%"
                               cy="50%"
-                              innerRadius={45}
-                              outerRadius={65}
-                              paddingAngle={5}
+                              innerRadius={55}
+                              outerRadius={75}
+                              paddingAngle={4}
                               dataKey="value"
                               stroke="none"
-                              label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
-                              labelLine={true}
                             >
                               {distributionChartData.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={entry.fill} />
@@ -4108,16 +3809,16 @@ export default function App() {
                         </ResponsiveContainer>
                         {/* Centered Total */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-2xl font-light text-slate-800">
+                          <span className="text-3xl font-light text-slate-800">
                             {distributionChartData.reduce((s, e) => s + e.value, 0)}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                             Processos
                           </span>
                         </div>
                       </div>
                       {/* Legend below */}
-                      <div className="flex flex-wrap gap-3 justify-center mt-2">
+                      <div className="flex flex-wrap gap-3 justify-center mt-4 border-t border-slate-50 pt-3">
                         {(() => {
                           const distTotal = distributionChartData.reduce((s, e) => s + e.value, 0);
                           return distributionChartData.map((entry, index) => {
