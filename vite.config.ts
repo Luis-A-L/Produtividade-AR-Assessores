@@ -4,9 +4,8 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
-  const isGHPages = process.env.GITHUB_PAGES === 'true';
   return {
-    base: isGHPages ? '/DesempenhoAR/' : '/',
+    base: process.env.NODE_ENV === 'production' ? '/Produtividade-AR-Assessores/' : '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
