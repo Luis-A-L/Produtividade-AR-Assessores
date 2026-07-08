@@ -2,6 +2,9 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
+import { exec } from "child_process";
+
+
 
 // Safe non-blocking fetch with timeout to prevent Google Sheets from hanging the server
 const fetchWithTimeout = async (url: string, options: any = {}, timeoutMs = 25000) => {
@@ -19,6 +22,8 @@ const fetchWithTimeout = async (url: string, options: any = {}, timeoutMs = 2500
     throw error;
   }
 };
+
+let isAutomationRunning = false;
 
 async function startServer() {
   const app = express();
@@ -328,6 +333,31 @@ async function startServer() {
       console.error("Erro na sincronização de planilha no servidor:", err);
       res.status(500).json({ error: err.message || "Erro interno do servidor." });
     }
+  });
+
+  // API Route: Trigger Login Automation via Puppeteer
+  app.post("/api/trigger-login-automation", (req, res) => {
+    if (isAutomationRunning) {
+      console.log("[Automation] O robô de login já está em execução. Ignorando solicitação duplicada.");
+      return res.json({ success: false, error: "Automação já está em andamento." });
+    }
+
+    isAutomationRunning = true;
+    console.log("[Automation] Solicitado início da automação de login pelo frontend...");
+
+    exec("node automate_login.js", (error, stdout, stderr) => {
+      isAutomationRunning = false;
+      if (error) {
+        console.error(`[Automation] Erro na execução do robô: ${error.message}`);
+        return;
+      }
+      if (stderr) {
+        console.warn(`[Automation] Stderr do robô:\n${stderr}`);
+      }
+      console.log(`[Automation] Robô finalizou com sucesso. Output:\n${stdout}`);
+    });
+
+    res.json({ success: true, message: "Robô de login iniciado em segundo plano." });
   });
 
   // Integrated Vite Server for Development

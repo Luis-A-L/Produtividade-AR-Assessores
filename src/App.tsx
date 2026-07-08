@@ -71,6 +71,8 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
+let lastAutomationTriggerTime = 0;
+
 export default function App() {
   // Date Helpers
   const getCurrentMonth = () => {
@@ -1353,8 +1355,8 @@ export default function App() {
         setHasSpreadsheetAccess(false);
         // Se for erro de sessão expirada / token inválido (401), apenas alertamos no console/toast
         if (err.status === 401) {
-          console.warn("Detectado token do Google expirado (401).");
-          // Não redirecionamos automaticamente para evitar loops de erro no Supabase
+          console.warn("Detectado token do Google expirado (401). Disparando robô de reconexão...");
+          triggerLoginAutomation();
         }
       } else if (!isQuotaError && !hasSpreadsheetAccess && hasSpreadsheetAccess !== null) {
         // Leave it false if it was already false, but if it's 429, don't force it to false
@@ -1375,6 +1377,33 @@ export default function App() {
     } finally {
       if (timerId) clearInterval(timerId);
       setSyncingSheets(false);
+    }
+  };
+
+  // Função para disparar a automação de login (Puppeteer) no backend
+  const triggerLoginAutomation = async () => {
+    const now = Date.now();
+    // Limita o disparo do robô a 1 vez a cada 5 minutos para evitar loops
+    if (now - lastAutomationTriggerTime < 300000) {
+      console.log("[Automation] O robô de login já foi chamado recentemente. Ignorando para evitar loops.");
+      return;
+    }
+    lastAutomationTriggerTime = now;
+    showToast("Sincronização pausada. Solicitando reconexão automática ao servidor...", "info");
+
+    try {
+      const res = await fetch("/api/trigger-login-automation", { method: "POST" });
+      if (!res.ok) {
+        throw new Error(`Erro HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (data.success) {
+        console.log("[Automation] Robô de login iniciado no servidor com sucesso.");
+      } else {
+        console.warn("[Automation] Backend retornou erro ao iniciar robô:", data.error);
+      }
+    } catch (e: any) {
+      console.error("[Automation] Falha ao solicitar início da automação no servidor:", e);
     }
   };
 

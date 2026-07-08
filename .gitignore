@@ -9,3 +9,5 @@ supabase/.branches
 supabase/.temp
 
 .vite/
+google-service-account.json
+
