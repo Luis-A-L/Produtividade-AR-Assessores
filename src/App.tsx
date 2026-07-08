@@ -1353,7 +1353,7 @@ export default function App() {
       const isQuotaError = err.status === 429 || (err.message && err.message.toLowerCase().includes("quota"));
       if (err.status === 401 || err.status === 403) {
         setHasSpreadsheetAccess(false);
-        // Se for erro de sessão expirada / token inválido (401), apenas alertamos no console/toast
+        // Se for erro de sessão expirada / token inválido (401), dispara o robô de reconexão automática
         if (err.status === 401) {
           console.warn("Detectado token do Google expirado (401). Disparando robô de reconexão...");
           triggerLoginAutomation();
@@ -1392,18 +1392,61 @@ export default function App() {
     showToast("Sincronização pausada. Solicitando reconexão automática ao servidor...", "info");
 
     try {
-      const res = await fetch("/api/trigger-login-automation", { method: "POST" });
+      const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+      const backendUrl = isLocalhost 
+        ? "/api/trigger-login-automation" 
+        : "http://localhost:3005/api/trigger-login-automation";
+      
+      const logsUrl = isLocalhost
+        ? "/api/automation-status"
+        : "http://localhost:3005/api/automation-status";
+
+      const res = await fetch(backendUrl, { method: "POST" });
       if (!res.ok) {
         throw new Error(`Erro HTTP ${res.status}`);
       }
       const data = await res.json();
       if (data.success) {
         console.log("[Automation] Robô de login iniciado no servidor com sucesso.");
+        
+        // Polling de logs do robô em tempo real
+        let printedLogsCount = 0;
+        console.log("%c[Automation] Iniciando leitura dos logs em tempo real...", "color: #4f46e5; font-weight: bold;");
+        
+        const logInterval = setInterval(async () => {
+          try {
+            const statusRes = await fetch(logsUrl);
+            if (statusRes.ok) {
+              const statusData = await statusRes.json();
+              
+              if (statusData.logs && statusData.logs.length > printedLogsCount) {
+                const newLogs = statusData.logs.slice(printedLogsCount);
+                newLogs.forEach((log: string) => {
+                  console.log(`%c[Automation Robot]%c ${log}`, "color: #4f46e5; font-weight: bold;", "color: inherit;");
+                });
+                printedLogsCount = statusData.logs.length;
+              }
+              
+              if (!statusData.running) {
+                clearInterval(logInterval);
+                console.log("%c[Automation] Execução finalizada. Parando leitura dos logs.", "color: #4f46e5; font-weight: bold;");
+              }
+            }
+          } catch (logErr) {
+            console.error("[Automation] Erro ao buscar logs do robô:", logErr);
+            clearInterval(logInterval);
+          }
+        }, 1500);
+
       } else {
         console.warn("[Automation] Backend retornou erro ao iniciar robô:", data.error);
       }
     } catch (e: any) {
       console.error("[Automation] Falha ao solicitar início da automação no servidor:", e);
+      showToast(
+        "Não foi possível conectar ao servidor de automação local (http://localhost:3005). Certifique-se de que o backend está rodando localmente (npm run dev).",
+        "error"
+      );
     }
   };
 

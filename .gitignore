@@ -10,4 +10,5 @@ supabase/.temp
 
 .vite/
 google-service-account.json
-
+puppeteer_user_data/
+last_sync_debug.json

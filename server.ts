@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 
 
 
@@ -24,12 +24,24 @@ const fetchWithTimeout = async (url: string, options: any = {}, timeoutMs = 2500
 };
 
 let isAutomationRunning = false;
+let automationLogs: string[] = [];
 
 async function startServer() {
   const app = express();
   const PORT = 3005;
 
   app.use(express.json());
+
+  // CORS Middleware to allow cross-origin requests from hosted frontend (e.g. GitHub Pages)
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
 
   // API Route: health check
   app.get("/api/health", (req, res) => {
@@ -343,21 +355,49 @@ async function startServer() {
     }
 
     isAutomationRunning = true;
+    automationLogs = [];
     console.log("[Automation] Solicitado início da automação de login pelo frontend...");
+    automationLogs.push("Iniciando processo de automação no servidor...");
 
-    exec("node automate_login.js", (error, stdout, stderr) => {
+    const child = spawn("node", ["automate_login.js"]);
+
+    child.stdout.on("data", (data) => {
+      const text = data.toString();
+      text.split("\n").forEach((line) => {
+        const clean = line.trim();
+        if (clean) {
+          console.log(`[Automation] ${clean}`);
+          automationLogs.push(clean);
+        }
+      });
+    });
+
+    child.stderr.on("data", (data) => {
+      const text = data.toString();
+      text.split("\n").forEach((line) => {
+        const clean = line.trim();
+        if (clean) {
+          console.error(`[Automation Error] ${clean}`);
+          automationLogs.push(`Erro: ${clean}`);
+        }
+      });
+    });
+
+    child.on("close", (code) => {
       isAutomationRunning = false;
-      if (error) {
-        console.error(`[Automation] Erro na execução do robô: ${error.message}`);
-        return;
-      }
-      if (stderr) {
-        console.warn(`[Automation] Stderr do robô:\n${stderr}`);
-      }
-      console.log(`[Automation] Robô finalizou com sucesso. Output:\n${stdout}`);
+      console.log(`[Automation] Robô finalizou com código de saída: ${code}`);
+      automationLogs.push(`Processo finalizado (código ${code}).`);
     });
 
     res.json({ success: true, message: "Robô de login iniciado em segundo plano." });
+  });
+
+  // API Route: Obter status e logs em tempo real do robô
+  app.get("/api/automation-status", (req, res) => {
+    res.json({
+      running: isAutomationRunning,
+      logs: automationLogs
+    });
   });
 
   // Integrated Vite Server for Development
