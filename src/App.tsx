@@ -696,13 +696,27 @@ export default function App() {
       if (norm.includes("modelo") || norm.includes("template")) {
         return;
       }
-      // Processa exclusivamente a aba Dados-GR
-      if (norm === "dados-gr") {
+      if (
+        /estag|assessor|membro|usuario|cadastro|user|integrante|funcionario/i.test(norm)
+      ) {
+        estagiariosSheetContent = content;
+        estagiariosSheetName = name;
+      } else if (targetControleSheetName && norm === normalizeText(targetControleSheetName)) {
         allControleSheets.push({ name, content });
+      } else if (norm.startsWith("controle")) {
+        // Aceita "Controle", "Controle detalhado", etc.
+        allControleSheets.push({ name, content });
+      } else {
+        // É uma aba individual de assessor/estagiário (ex: Ademar, Vinicius, Sara, etc.)
+        candidateIndividualSheets.push({ name, content });
       }
     });
 
-    const controleSheets = allControleSheets;
+    const controleSheets = targetControleSheetName
+      ? allControleSheets
+      : (allControleSheets.some((s) => normalizeText(s.name).includes("detalh"))
+          ? allControleSheets.filter((s) => normalizeText(s.name).includes("detalh"))
+          : allControleSheets);
 
     const estagiariosFromSheet: Estagiario[] = [];
     const estagiariosCreatedTemp: string[] = [];
