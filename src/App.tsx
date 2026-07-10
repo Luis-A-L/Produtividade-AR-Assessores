@@ -4457,67 +4457,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Detalhe do Dia Selecionado List */}
-                  <div className="bg-white border text-center border-indigo-200 rounded-xl shadow-sm overflow-hidden mb-0">
-                    <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-                      <h2 className="text-sm font-bold tracking-tight text-indigo-900 flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-emerald-500 animate-pulse" />
-                        {selectedDetailDate === getCurrentDate() ? (
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
-                            <span>FEITO HOJE — TEMPO REAL</span>
-                            {syncingSheets ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full shadow-sm animate-pulse">
-                                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping"></span>
-                                Sincronizando ({syncDuration.toFixed(1)}s)...
-                              </span>
-                            ) : lastSyncTime ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shadow-sm">
-                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                                Sincronizado: {formatLastSyncTime(lastSyncTime)} {lastSyncDuration !== null ? `(${lastSyncDuration.toFixed(1)}s)` : ""}
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <span>PRODUTIVIDADE EM {selectedDetailDate.split("-").reverse().join("/")}</span>
-                        )}
-                      </h2>
-                      <div className="flex items-center gap-2">
-                        {/* Indicador de Total Geral Acumulado no Dia */}
-                        <div className="flex items-center gap-1.5 bg-indigo-600 text-white px-2.5 py-1 rounded-lg text-[10px] font-extrabold shadow-sm select-none">
-                          <span>TOTAL DO DIA:</span>
-                          <span className="bg-white text-indigo-700 px-2 py-0.5 rounded font-black text-xs">
-                            {totalDayAnalyzed.toLocaleString("pt-BR")}
-                          </span>
-                        </div>
 
-                        {selectedDetailDate !== getCurrentDate() && (
-                          <button
-                            onClick={() => setSelectedDetailDate(getCurrentDate())}
-                            className="text-[10px] bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold px-2 py-1 rounded-md transition-all cursor-pointer shadow-sm border border-indigo-200"
-                          >
-                            Voltar para Hoje
-                          </button>
-                        )}
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-1 rounded-full uppercase tracking-wider select-none">
-                          Visualização por Dia
-                        </span>
-                      </div>
-                    </div>
-                    {/* Painel Horizontal Agregado do Dia */}
-                    <div className="p-6 bg-slate-50 flex flex-col md:flex-row items-center justify-between gap-6 border-t border-slate-100">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-indigo-100">
-                          {totalDayAnalyzed}
-                        </div>
-                        <div className="text-left">
-                          <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Total da Equipe no Dia</h4>
-                          <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Processos analisados por todos os setores</p>
-                        </div>
-                      </div>
-
-                      {/* Team-wide process type breakdown removido */}
-                    </div>
-                  </div>
 
                 </motion.div>
               ) : (
