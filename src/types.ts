@@ -4,7 +4,7 @@ export interface Assessor {
   sector: "público" | "privado 1" | "privado 2" | "privado 3" | "crime";
   dailyGoal?: number;
   matricula?: string;
-  semanaProva?: boolean;
+
 }
 
 export interface ProductivityEntry {

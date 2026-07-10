@@ -28,7 +28,7 @@ let automationLogs: string[] = [];
 
 async function startServer() {
   const app = express();
-  const PORT = 3005;
+  const PORT = 3001;
 
   app.use(express.json());
 

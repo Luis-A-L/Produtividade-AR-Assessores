@@ -66,7 +66,7 @@ import {
   Bell,
   Zap,
   Lock,
-  GraduationCap,
+
   ArrowLeft,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -218,7 +218,7 @@ export default function App() {
     }
   };
 
-  const [semanaProvaIds, setSemanaProvaIds] = useState<string[]>([]);
+
 
   const [previewEntries, setPreviewEntries] = useState<
     Omit<ProductivityEntry, "id">[]
@@ -518,12 +518,6 @@ export default function App() {
         setLastSyncTime(settingsData.lastSync || "");
       }
 
-      // 4. Carregar configurações de semana de prova (anon pode ler)
-      const semanaProvaSnap = await getDoc(doc(db, "settings", "semanaProva"));
-      if (semanaProvaSnap.exists()) {
-        const semanaProvaData = semanaProvaSnap.data();
-        setSemanaProvaIds(semanaProvaData.estagiariosIds || []);
-      }
       // Não tenta criar settings se não existir — o usuário autenticado fará isso depois
     } catch (error) {
       console.error("Erro ao carregar dados do Supabase:", error);
@@ -1893,9 +1887,7 @@ export default function App() {
     );
 
     const unsubSettings = subscribeToSettings((key, value) => {
-      if (key === "semanaProva") {
-        setSemanaProvaIds(value?.estagiariosIds || []);
-      } else if (key === "googleSheet") {
+      if (key === "googleSheet") {
         setSpreadsheetUrl(value?.url || DEFAULT_SHEET_URL);
         setAutoSyncEnabled(value?.autoSync !== undefined ? value.autoSync : true);
         // Sempre usa "Dados-GR" para a aba, ignorando valor antigo do banco
@@ -2262,44 +2254,7 @@ export default function App() {
     }
   };
 
-  // Toggle Semana de Provas / Meio Período
-  const handleToggleSemanaProva = async (estagiarioId: string) => {
-    const isCurrentlyActive = semanaProvaIds.includes(estagiarioId);
-    let updatedIds: string[];
-    if (isCurrentlyActive) {
-      updatedIds = semanaProvaIds.filter((id) => id !== estagiarioId);
-    } else {
-      updatedIds = [...semanaProvaIds, estagiarioId];
-    }
 
-    try {
-      // Atualiza o estado local para uma resposta imediata na UI
-      setSemanaProvaIds(updatedIds);
-
-      // Persiste na tabela settings do Supabase
-      await setDoc(doc(db, "settings", "semanaProva"), {
-        estagiariosIds: updatedIds,
-      });
-
-      const estagiarioName = estagiarios.find((e) => e.id === estagiarioId)?.name || "Assessor";
-      if (!isCurrentlyActive) {
-        showToast(
-          `"${estagiarioName}" definido em Semana de Provas! Meta ajustada pela metade.`,
-          "success"
-        );
-      } else {
-        showToast(
-          `Semana de Provas finalizada para "${estagiarioName}"! Meta restaurada ao normal.`,
-          "success"
-        );
-      }
-    } catch (err: any) {
-      console.error("Erro ao atualizar semana de prova:", err);
-      // Reverte o estado local em caso de erro
-      setSemanaProvaIds(semanaProvaIds);
-      alert("Erro ao salvar alteração da semana de prova.");
-    }
-  };
 
   // Função para redistribuir processos de um assessor para outro
   const handleRedistribute = async (e: React.FormEvent) => {
@@ -2528,10 +2483,7 @@ export default function App() {
 
       const sector =
         estagiario.sector || "público";
-      const baseGoal =
-        estagiario.dailyGoal ?? 25;
-      const isSemanaProva = semanaProvaIds.includes(estagiario.id);
-      const dailyGoal = isSemanaProva ? Math.round(baseGoal / 2) : baseGoal;
+      const dailyGoal = estagiario.dailyGoal ?? 25;
       const daysMeetingGoal = filteredEntries.filter(
         (item) => item.count >= dailyGoal,
       ).length;
@@ -2539,7 +2491,7 @@ export default function App() {
         dailyGoal > 0
           ? Number(((averagePerDay / dailyGoal) * 100).toFixed(1))
           : 0;
- 
+
       // Determine status badge: can be based on goalProgressRatio!
       // If goalProgress >= 100% -> ALTO
       // If goalProgress >= 70% -> NORMAL
@@ -2548,7 +2500,7 @@ export default function App() {
       const ratio = dailyGoal > 0 ? (averagePerDay / dailyGoal) * 100 : 0;
       if (ratio >= 100 && totalAnalyzed > 0) status = "ALTO";
       else if (ratio < 70 || totalAnalyzed === 0) status = "ATENÇÃO";
- 
+
       return {
         ...estagiario,
         sector,
@@ -2566,10 +2518,9 @@ export default function App() {
         averagePerDay,
         status,
         entriesList: filteredEntries,
-        semanaProva: isSemanaProva,
       };
     });
-  }, [estagiarios, normalizedEntries, selectedMonth, selectedDetailDate, semanaProvaIds]);
+  }, [estagiarios, normalizedEntries, selectedMonth, selectedDetailDate]);
 
   // Total de processos do dia selecionado
   const totalDayAnalyzed = useMemo(() => {
@@ -3648,6 +3599,632 @@ export default function App() {
                           </div>
                         </div>
 
+                        {/* ── Gráficos do Setor ── */}
+                        {(() => {
+                          // Dados: IDs dos assessores do setor
+                          const sectorAssessorIds = new Set(assessorsInSector.map(a => a.id));
+
+                          // 1. Produção diária do setor no mês
+                          const [ys, ms] = selectedMonth.split("-");
+                          const yearS = parseInt(ys, 10);
+                          const monthS = parseInt(ms, 10);
+                          const daysInMonthS = new Date(yearS, monthS, 0).getDate();
+                          const sectorDailyMap = new Map<string, number>();
+                          for (let i = 1; i <= daysInMonthS; i++) {
+                            const d = `${ys}-${String(monthS).padStart(2,"0")}-${String(i).padStart(2,"0")}`;
+                            sectorDailyMap.set(d, 0);
+                          }
+                          normalizedEntries
+                            .filter(e => e.date.startsWith(selectedMonth) && sectorAssessorIds.has(e.estagiarioId))
+                            .forEach(e => { sectorDailyMap.set(e.date, (sectorDailyMap.get(e.date) || 0) + e.count); });
+                          const sectorDailyData = Array.from(sectorDailyMap.entries()).map(([date, count]) => ({
+                            dia: String(parseInt(date.split("-")[2], 10)).padStart(2, "0"),
+                            total: count,
+                          }));
+
+                          // Meta diária do setor = soma das metas diárias dos assessores
+                          const sectorDailyGoal = assessorsInSector.reduce((s, a) => s + (a.dailyGoal || 25), 0);
+
+                          // 2. Ranking de assessores (totalAnalyzed, barra horizontal)
+                          const sectorRankingData = [...assessorsInSector]
+                            .sort((a, b) => (b.totalAnalyzed || 0) - (a.totalAnalyzed || 0))
+                            .map(a => ({
+                              name: a.name.split(" ")[0], // primeiro nome
+                              fullName: a.name,
+                              total: a.totalAnalyzed || 0,
+                              meta: (a.dailyGoal || 25) * 20, // ~20 dias úteis
+                            }));
+
+                          // 3. Distribuição por tipo de processo no setor
+                          const PROCESS_COLORS: Record<string, string> = {
+                            CV:    "#2563eb", RCV: "#3b82f6", DCV: "#60a5fa",
+                            CR:    "#7c3aed", RCR: "#8b5cf6", DCR: "#a78bfa",
+                            REDCV: "#ef4444", REDCR: "#dc2626", REVCR: "#f87171",
+                          };
+                          const typeCountsS: Record<string, number> = {};
+                          normalizedEntries
+                            .filter(e => e.date.startsWith(selectedMonth) && sectorAssessorIds.has(e.estagiarioId))
+                            .forEach(e => {
+                              if (e.typeBreakdown) {
+                                Object.entries(e.typeBreakdown).forEach(([t, q]) => {
+                                  const k = t.toUpperCase();
+                                  typeCountsS[k] = (typeCountsS[k] || 0) + Number(q);
+                                });
+                              }
+                            });
+                          const sectorTypeData = Object.entries(typeCountsS)
+                            .filter(([, v]) => v > 0)
+                            .map(([type, value]) => ({ name: type, value, fill: PROCESS_COLORS[type] || "#94a3b8" }))
+                            .sort((a, b) => b.value - a.value);
+
+                          // Cores do setor para os gráficos
+                          const sectorColorMap: Record<string, { bar: string; line: string }> = {
+                            "público":   { bar: "#3b82f6", line: "#1d4ed8" },
+                            "privado 1": { bar: "#38bdf8", line: "#0284c7" },
+                            "privado 2": { bar: "#2dd4bf", line: "#0d9488" },
+                            "privado 3": { bar: "#34d399", line: "#059669" },
+                            "crime":     { bar: "#a78bfa", line: "#7c3aed" },
+                          };
+                          const sCol = sectorColorMap[selectedSectorDetail!] || { bar: "#6366f1", line: "#4338ca" };
+                          const hasTypeData = sectorTypeData.length > 0;
+
+                          return (
+                            <div className="flex flex-col gap-6">
+                              {/* Gráfico 1: Produção Diária do Setor */}
+                              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                                <div className="flex items-center gap-2 mb-4">
+                                  <TrendingUp className="w-4 h-4" style={{ color: sCol.line }} />
+                                  <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">
+                                    Produção Diária — Setor {selectedSectorDetail}
+                                  </h4>
+                                  <span className="ml-auto text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                                    {selectedMonth.split("-").reverse().join("/")}
+                                  </span>
+                                </div>
+                                <div className="h-[220px] w-full">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <ComposedChart data={sectorDailyData} margin={{ top: 6, right: 8, left: -24, bottom: 0 }}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                      <XAxis dataKey="dia" tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }} axisLine={false} tickLine={false} />
+                                      <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                                      <Tooltip
+                                        contentStyle={{ fontSize: 12, borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}
+                                        formatter={(val: number) => [val.toLocaleString("pt-BR"), "Processos"]}
+                                        labelFormatter={(l) => `Dia ${l}`}
+                                      />
+                                      <Bar dataKey="total" fill={sCol.bar} radius={[4, 4, 0, 0]} maxBarSize={28} opacity={0.85} />
+                                      {sectorDailyGoal > 0 && (
+                                        <Line
+                                          type="monotone"
+                                          dataKey={() => sectorDailyGoal}
+                                          stroke={sCol.line}
+                                          strokeDasharray="5 4"
+                                          strokeWidth={1.5}
+                                          dot={false}
+                                          name="Meta Diária"
+                                        />
+                                      )}
+                                    </ComposedChart>
+                                  </ResponsiveContainer>
+                                </div>
+                                {sectorDailyGoal > 0 && (
+                                  <div className="flex items-center gap-1.5 mt-2">
+                                    <span className="inline-block w-6 border-t-2 border-dashed" style={{ borderColor: sCol.line }}></span>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Meta diária do setor: {sectorDailyGoal} proc.</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Gráficos 2 e 3: Ranking + Tipos */}
+                              <div className={`grid gap-6 ${hasTypeData ? "grid-cols-1 lg:grid-cols-[1.4fr_1fr]" : "grid-cols-1"}`}>
+                                {/* Gráfico 2: Ranking de Assessores */}
+                                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                                  <div className="flex items-center gap-2 mb-4">
+                                    <BarChart2 className="w-4 h-4" style={{ color: sCol.line }} />
+                                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Ranking de Assessores</h4>
+                                  </div>
+                                  {sectorRankingData.length === 0 ? (
+                                    <div className="flex items-center justify-center h-32 text-slate-400 text-sm">Sem dados neste mês.</div>
+                                  ) : (
+                                    <div className="h-[200px] w-full">
+                                      <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart
+                                          layout="vertical"
+                                          data={sectorRankingData}
+                                          margin={{ top: 0, right: 40, left: 0, bottom: 0 }}
+                                        >
+                                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                                          <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                                          <YAxis
+                                            type="category"
+                                            dataKey="name"
+                                            width={72}
+                                            tick={{ fontSize: 10, fill: "#475569", fontWeight: 700 }}
+                                            axisLine={false}
+                                            tickLine={false}
+                                          />
+                                          <Tooltip
+                                            contentStyle={{ fontSize: 12, borderRadius: 10, border: "1px solid #e2e8f0" }}
+                                            formatter={(val: number, _name: string, props: any) => [
+                                              `${val.toLocaleString("pt-BR")} proc.`,
+                                              props.payload.fullName
+                                            ]}
+                                          />
+                                          <Bar dataKey="total" radius={[0, 6, 6, 0]} maxBarSize={20}>
+                                            {sectorRankingData.map((_, idx) => (
+                                              <Cell
+                                                key={idx}
+                                                fill={sCol.bar}
+                                                opacity={1 - (idx / sectorRankingData.length) * 0.45}
+                                              />
+                                            ))}
+                                          </Bar>
+                                        </BarChart>
+                                      </ResponsiveContainer>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Gráfico 3: Distribuição por Tipo de Processo */}
+                                {hasTypeData && (
+                                  <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                                    <div className="flex items-center gap-2 mb-4">
+                                      <FileText className="w-4 h-4" style={{ color: sCol.line }} />
+                                      <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Tipos de Processo</h4>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                      <div className="h-[180px] flex-shrink-0" style={{ width: 160 }}>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                          <PieChart>
+                                            <Pie
+                                              data={sectorTypeData}
+                                              cx="50%"
+                                              cy="50%"
+                                              innerRadius={48}
+                                              outerRadius={72}
+                                              paddingAngle={2}
+                                              dataKey="value"
+                                            >
+                                              {sectorTypeData.map((entry, idx) => (
+                                                <Cell key={idx} fill={entry.fill} />
+                                              ))}
+                                            </Pie>
+                                            <Tooltip
+                                              contentStyle={{ fontSize: 11, borderRadius: 10, border: "1px solid #e2e8f0" }}
+                                              formatter={(val: number) => [val.toLocaleString("pt-BR"), "proc."]}
+                                            />
+                                          </PieChart>
+                                        </ResponsiveContainer>
+                                      </div>
+                                      <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                                        {sectorTypeData.map((item) => {
+                                          const totalType = sectorTypeData.reduce((s, x) => s + x.value, 0);
+                                          const pct = totalType > 0 ? Math.round((item.value / totalType) * 100) : 0;
+                                          return (
+                                            <div key={item.name} className="flex items-center gap-2 min-w-0">
+                                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: item.fill }}></span>
+                                              <span className="text-[10px] font-black text-slate-600 uppercase flex-shrink-0 w-12">{item.name}</span>
+                                              <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: item.fill }}></div>
+                                              </div>
+                                              <span className="text-[10px] font-bold text-slate-500 flex-shrink-0 w-8 text-right">{pct}%</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* ── Análise Específica do Setor ── */}
+                        {(() => {
+                          const sectorAssessorIds = new Set(assessorsInSector.map(a => a.id));
+                          const [ys, ms] = selectedMonth.split("-");
+                          const yearS = parseInt(ys, 10);
+                          const monthS = parseInt(ms, 10);
+                          const daysInMonthS = new Date(yearS, monthS, 0).getDate();
+
+                          const sectorColorMap: Record<string, { bar: string; bar2: string; line: string; area: string }> = {
+                            "público":   { bar: "#3b82f6", bar2: "#818cf8", line: "#1d4ed8", area: "#dbeafe" },
+                            "privado 1": { bar: "#38bdf8", bar2: "#7dd3fc", line: "#0284c7", area: "#e0f2fe" },
+                            "privado 2": { bar: "#2dd4bf", bar2: "#6ee7b7", line: "#0d9488", area: "#ccfbf1" },
+                            "privado 3": { bar: "#34d399", bar2: "#86efac", line: "#059669", area: "#dcfce7" },
+                            "crime":     { bar: "#a78bfa", bar2: "#f472b6", line: "#7c3aed", area: "#ede9fe" },
+                          };
+                          const sCol = sectorColorMap[selectedSectorDetail!] || { bar: "#6366f1", bar2: "#a5b4fc", line: "#4338ca", area: "#e0e7ff" };
+
+                          // ─ PÚBLICO: Comparativo Meta vs. Realizado por assessor ─
+                          if (selectedSectorDetail === "público") {
+                            const metaVsRealData = [...assessorsInSector]
+                              .sort((a, b) => (b.totalAnalyzed || 0) - (a.totalAnalyzed || 0))
+                              .map(a => {
+                                const metaMensal = (a.dailyGoal || 25) * 20; // ~20 dias úteis
+                                const realizado = a.totalAnalyzed || 0;
+                                const pct = metaMensal > 0 ? Math.round((realizado / metaMensal) * 100) : 0;
+                                return {
+                                  name: a.name.split(" ")[0],
+                                  fullName: a.name,
+                                  meta: metaMensal,
+                                  realizado,
+                                  pct,
+                                };
+                              });
+
+                            const taxaCumprimento = (() => {
+                              const totalMeta = metaVsRealData.reduce((s, x) => s + x.meta, 0);
+                              const totalReal = metaVsRealData.reduce((s, x) => s + x.realizado, 0);
+                              return totalMeta > 0 ? Math.round((totalReal / totalMeta) * 100) : 0;
+                            })();
+
+                            return (
+                              <div className="bg-white border border-blue-100 rounded-xl shadow-sm p-5 ring-1 ring-blue-200/40">
+                                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Award className="w-4 h-4 text-blue-600" />
+                                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">
+                                      Meta vs. Realizado — Assessores do Setor
+                                    </h4>
+                                  </div>
+                                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+                                    <span className="text-[10px] text-blue-500 font-extrabold uppercase tracking-wider">Taxa de Cumprimento do Setor:</span>
+                                    <span className={`text-sm font-black ${taxaCumprimento >= 100 ? "text-emerald-600" : taxaCumprimento >= 70 ? "text-blue-700" : "text-amber-600"}`}>
+                                      {taxaCumprimento}%
+                                    </span>
+                                  </div>
+                                </div>
+                                {metaVsRealData.length === 0 ? (
+                                  <div className="flex items-center justify-center h-32 text-slate-400 text-sm">Sem dados neste mês.</div>
+                                ) : (
+                                  <div className="h-[220px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <BarChart data={metaVsRealData} margin={{ top: 4, right: 16, left: -20, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#475569", fontWeight: 700 }} axisLine={false} tickLine={false} />
+                                        <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                                        <Tooltip
+                                          contentStyle={{ fontSize: 12, borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}
+                                          formatter={(val: number, name: string, props: any) => [
+                                            `${val.toLocaleString("pt-BR")} proc. (${props.payload.pct}%)`,
+                                            name === "meta" ? "Meta Mensal (~20 dias)" : "Realizado",
+                                          ]}
+                                          labelFormatter={(l) => metaVsRealData.find(x => x.name === l)?.fullName || l}
+                                        />
+                                        <Legend
+                                          wrapperStyle={{ fontSize: 10, fontWeight: 700, paddingTop: 8 }}
+                                          formatter={(val) => val === "meta" ? "Meta Mensal" : "Realizado"}
+                                        />
+                                        <Bar dataKey="meta" fill={sCol.bar2} radius={[4, 4, 0, 0]} maxBarSize={22} opacity={0.5} name="meta" />
+                                        <Bar dataKey="realizado" fill={sCol.bar} radius={[4, 4, 0, 0]} maxBarSize={22} name="realizado">
+                                          {metaVsRealData.map((entry, idx) => (
+                                            <Cell
+                                              key={idx}
+                                              fill={entry.realizado >= entry.meta ? "#10b981" : entry.realizado >= entry.meta * 0.7 ? sCol.bar : "#f59e0b"}
+                                            />
+                                          ))}
+                                        </Bar>
+                                      </BarChart>
+                                    </ResponsiveContainer>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-4 mt-2 flex-wrap">
+                                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block" /><span className="text-[10px] font-bold text-slate-400 uppercase">Atingiu a meta</span></div>
+                                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block" style={{ background: sCol.bar }} /><span className="text-[10px] font-bold text-slate-400 uppercase">Acima de 70%</span></div>
+                                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /><span className="text-[10px] font-bold text-slate-400 uppercase">Abaixo de 70%</span></div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // ─ PRIVADO 1: Evolução Acumulada no Mês ─
+                          if (selectedSectorDetail === "privado 1") {
+                            let accumulated = 0;
+                            const dailyMap = new Map<string, number>();
+                            for (let i = 1; i <= daysInMonthS; i++) {
+                              const d = `${ys}-${String(monthS).padStart(2, "0")}-${String(i).padStart(2, "0")}`;
+                              dailyMap.set(d, 0);
+                            }
+                            normalizedEntries
+                              .filter(e => e.date.startsWith(selectedMonth) && sectorAssessorIds.has(e.estagiarioId))
+                              .forEach(e => { dailyMap.set(e.date, (dailyMap.get(e.date) || 0) + e.count); });
+
+                            const accumulatedData = Array.from(dailyMap.entries()).map(([date, count]) => {
+                              accumulated += count;
+                              return {
+                                dia: String(parseInt(date.split("-")[2], 10)).padStart(2, "0"),
+                                diario: count,
+                                acumulado: accumulated,
+                              };
+                            });
+
+                            const maxAccum = accumulatedData.reduce((m, x) => Math.max(m, x.acumulado), 0);
+
+                            return (
+                              <div className="bg-white border border-sky-100 rounded-xl shadow-sm p-5 ring-1 ring-sky-200/40">
+                                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <TrendingUp className="w-4 h-4 text-sky-500" />
+                                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">
+                                      Evolução Acumulada no Mês
+                                    </h4>
+                                  </div>
+                                  <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 rounded-lg px-3 py-1.5">
+                                    <span className="text-[10px] text-sky-500 font-extrabold uppercase tracking-wider">Total Acumulado:</span>
+                                    <span className="text-sm font-black text-sky-700">{maxAccum.toLocaleString("pt-BR")} proc.</span>
+                                  </div>
+                                </div>
+                                <div className="h-[220px] w-full">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <ComposedChart data={accumulatedData} margin={{ top: 6, right: 8, left: -24, bottom: 0 }}>
+                                      <defs>
+                                        <linearGradient id="gradPriv1" x1="0" y1="0" x2="0" y2="1">
+                                          <stop offset="5%" stopColor={sCol.bar} stopOpacity={0.3} />
+                                          <stop offset="95%" stopColor={sCol.bar} stopOpacity={0.02} />
+                                        </linearGradient>
+                                      </defs>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                      <XAxis dataKey="dia" tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }} axisLine={false} tickLine={false} />
+                                      <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                                      <Tooltip
+                                        contentStyle={{ fontSize: 12, borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}
+                                        formatter={(val: number, name: string) => [val.toLocaleString("pt-BR"), name === "acumulado" ? "Acumulado" : "Diário"]}
+                                        labelFormatter={(l) => `Dia ${l}`}
+                                      />
+                                      <Bar dataKey="diario" fill={sCol.bar2} radius={[3, 3, 0, 0]} maxBarSize={20} opacity={0.5} name="diario" />
+                                      <Line type="monotone" dataKey="acumulado" stroke={sCol.line} strokeWidth={2.5} dot={false} name="acumulado" />
+                                    </ComposedChart>
+                                  </ResponsiveContainer>
+                                </div>
+                                <div className="flex items-center gap-4 mt-2">
+                                  <div className="flex items-center gap-1.5"><span className="w-5 h-0.5 inline-block rounded" style={{ background: sCol.line }} /><span className="text-[10px] font-bold text-slate-400 uppercase">Acumulado</span></div>
+                                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block opacity-50" style={{ background: sCol.bar2 }} /><span className="text-[10px] font-bold text-slate-400 uppercase">Diário</span></div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // ─ PRIVADO 2: Distribuição Semanal ─
+                          if (selectedSectorDetail === "privado 2") {
+                            // Agrupa por semana do mês (1–4)
+                            const weeklyMap: Record<string, number> = {
+                              "Semana 1": 0, "Semana 2": 0, "Semana 3": 0, "Semana 4": 0,
+                            };
+                            normalizedEntries
+                              .filter(e => e.date.startsWith(selectedMonth) && sectorAssessorIds.has(e.estagiarioId))
+                              .forEach(e => {
+                                const day = parseInt(e.date.split("-")[2], 10);
+                                const week = day <= 7 ? "Semana 1" : day <= 14 ? "Semana 2" : day <= 21 ? "Semana 3" : "Semana 4";
+                                weeklyMap[week] += e.count;
+                              });
+
+                            const weeklyData = Object.entries(weeklyMap).map(([week, total]) => ({ week, total }));
+                            const bestWeek = weeklyData.reduce((best, x) => x.total > best.total ? x : best, weeklyData[0]);
+
+                            return (
+                              <div className="bg-white border border-teal-100 rounded-xl shadow-sm p-5 ring-1 ring-teal-200/40">
+                                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <CalendarDays className="w-4 h-4 text-teal-500" />
+                                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">
+                                      Distribuição Semanal de Produção
+                                    </h4>
+                                  </div>
+                                  {bestWeek && bestWeek.total > 0 && (
+                                    <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
+                                      <span className="text-[10px] text-teal-500 font-extrabold uppercase tracking-wider">Melhor Semana:</span>
+                                      <span className="text-sm font-black text-teal-700">{bestWeek.week} · {bestWeek.total.toLocaleString("pt-BR")} proc.</span>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="h-[200px] w-full">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={weeklyData} margin={{ top: 6, right: 16, left: -20, bottom: 0 }}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                      <XAxis dataKey="week" tick={{ fontSize: 11, fill: "#475569", fontWeight: 700 }} axisLine={false} tickLine={false} />
+                                      <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                                      <Tooltip
+                                        contentStyle={{ fontSize: 12, borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}
+                                        formatter={(val: number) => [val.toLocaleString("pt-BR"), "Processos"]}
+                                      />
+                                      <Bar dataKey="total" radius={[6, 6, 0, 0]} maxBarSize={60}>
+                                        {weeklyData.map((entry, idx) => (
+                                          <Cell
+                                            key={idx}
+                                            fill={entry.week === bestWeek?.week ? sCol.line : sCol.bar}
+                                            opacity={entry.week === bestWeek?.week ? 1 : 0.65}
+                                          />
+                                        ))}
+                                      </Bar>
+                                    </BarChart>
+                                  </ResponsiveContainer>
+                                </div>
+                                <p className="text-[10px] text-slate-400 font-semibold mt-2 uppercase tracking-wider">
+                                  Semana 1 = dias 1–7 · Semana 2 = dias 8–14 · Semana 3 = dias 15–21 · Semana 4 = dias 22+
+                                </p>
+                              </div>
+                            );
+                          }
+
+                          // ─ PRIVADO 3: Tendência com Média Móvel de 3 dias ─
+                          if (selectedSectorDetail === "privado 3") {
+                            const dailyMap3 = new Map<string, number>();
+                            for (let i = 1; i <= daysInMonthS; i++) {
+                              const d = `${ys}-${String(monthS).padStart(2, "0")}-${String(i).padStart(2, "0")}`;
+                              dailyMap3.set(d, 0);
+                            }
+                            normalizedEntries
+                              .filter(e => e.date.startsWith(selectedMonth) && sectorAssessorIds.has(e.estagiarioId))
+                              .forEach(e => { dailyMap3.set(e.date, (dailyMap3.get(e.date) || 0) + e.count); });
+
+                            const dailyArr = Array.from(dailyMap3.entries()).map(([date, count]) => ({ date, count }));
+                            const movingAvgData = dailyArr.map((item, i) => {
+                              const window = dailyArr.slice(Math.max(0, i - 2), i + 1);
+                              const avg = Math.round(window.reduce((s, x) => s + x.count, 0) / window.length);
+                              return {
+                                dia: String(parseInt(item.date.split("-")[2], 10)).padStart(2, "0"),
+                                diario: item.count,
+                                media3d: avg,
+                              };
+                            });
+
+                            // Tendência geral (diferença entre última média e primeira)
+                            const firstAvg = movingAvgData[0]?.media3d || 0;
+                            const lastAvg = movingAvgData[movingAvgData.length - 1]?.media3d || 0;
+                            const trendDiff = lastAvg - firstAvg;
+
+                            return (
+                              <div className="bg-white border border-emerald-100 rounded-xl shadow-sm p-5 ring-1 ring-emerald-200/40">
+                                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Zap className="w-4 h-4 text-emerald-500" />
+                                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">
+                                      Tendência de Produtividade (Média Móvel 3 Dias)
+                                    </h4>
+                                  </div>
+                                  <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 border ${trendDiff >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                                    <span className={`text-[10px] font-extrabold uppercase tracking-wider ${trendDiff >= 0 ? "text-emerald-500" : "text-red-400"}`}>Tendência do Mês:</span>
+                                    <span className={`text-sm font-black ${trendDiff >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                                      {trendDiff >= 0 ? "▲" : "▼"} {Math.abs(trendDiff)} proc.
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="h-[220px] w-full">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <ComposedChart data={movingAvgData} margin={{ top: 6, right: 8, left: -24, bottom: 0 }}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                      <XAxis dataKey="dia" tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }} axisLine={false} tickLine={false} />
+                                      <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                                      <Tooltip
+                                        contentStyle={{ fontSize: 12, borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}
+                                        formatter={(val: number, name: string) => [val.toLocaleString("pt-BR"), name === "media3d" ? "Média Móvel (3d)" : "Diário"]}
+                                        labelFormatter={(l) => `Dia ${l}`}
+                                      />
+                                      <Bar dataKey="diario" fill={sCol.bar2} radius={[3, 3, 0, 0]} maxBarSize={20} opacity={0.4} name="diario" />
+                                      <Line
+                                        type="monotone"
+                                        dataKey="media3d"
+                                        stroke={sCol.line}
+                                        strokeWidth={2.5}
+                                        dot={{ r: 3, fill: sCol.line, strokeWidth: 0 }}
+                                        name="media3d"
+                                      />
+                                    </ComposedChart>
+                                  </ResponsiveContainer>
+                                </div>
+                                <div className="flex items-center gap-4 mt-2">
+                                  <div className="flex items-center gap-1.5"><span className="w-5 h-0.5 inline-block rounded" style={{ background: sCol.line }} /><span className="text-[10px] font-bold text-slate-400 uppercase">Média Móvel 3 Dias</span></div>
+                                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block opacity-40" style={{ background: sCol.bar2 }} /><span className="text-[10px] font-bold text-slate-400 uppercase">Produção Diária</span></div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // ─ CRIME: Breakdown CV vs. CR por Assessor ─
+                          if (selectedSectorDetail === "crime") {
+                            // Agrupa contagem de CV* vs CR* por assessor
+                            const cvCrData = assessorsInSector.map(a => {
+                              let cv = 0, cr = 0, outros = 0;
+                              normalizedEntries
+                                .filter(e => e.date.startsWith(selectedMonth) && e.estagiarioId === a.id)
+                                .forEach(e => {
+                                  if (e.typeBreakdown) {
+                                    Object.entries(e.typeBreakdown).forEach(([t, q]) => {
+                                      const key = t.toUpperCase();
+                                      const n = Number(q);
+                                      if (key.includes("CV")) cv += n;
+                                      else if (key.includes("CR")) cr += n;
+                                      else outros += n;
+                                    });
+                                  } else {
+                                    // se não tiver breakdown, conta no total
+                                    outros += e.count;
+                                  }
+                                });
+                              return {
+                                name: a.name.split(" ")[0],
+                                fullName: a.name,
+                                cv,
+                                cr,
+                                outros,
+                                total: cv + cr + outros,
+                              };
+                            }).filter(a => a.total > 0).sort((a, b) => b.total - a.total);
+
+                            const hasBreakdown = cvCrData.some(x => x.cv > 0 || x.cr > 0);
+
+                            return (
+                              <div className="bg-white border border-violet-100 rounded-xl shadow-sm p-5 ring-1 ring-violet-200/40">
+                                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4 text-violet-500" />
+                                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">
+                                      Breakdown Cível (CV) vs. Criminal (CR) por Assessor
+                                    </h4>
+                                  </div>
+                                  {cvCrData.length > 0 && (
+                                    <div className="flex items-center gap-3">
+                                      <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1">
+                                        <span className="text-[10px] text-blue-500 font-extrabold uppercase">CV Total:</span>
+                                        <span className="text-xs font-black text-blue-700">{cvCrData.reduce((s, x) => s + x.cv, 0).toLocaleString("pt-BR")}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 bg-violet-50 border border-violet-200 rounded-lg px-2.5 py-1">
+                                        <span className="text-[10px] text-violet-500 font-extrabold uppercase">CR Total:</span>
+                                        <span className="text-xs font-black text-violet-700">{cvCrData.reduce((s, x) => s + x.cr, 0).toLocaleString("pt-BR")}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                {!hasBreakdown || cvCrData.length === 0 ? (
+                                  <div className="flex flex-col items-center justify-center h-32 gap-2 text-slate-400">
+                                    <FileText className="w-8 h-8 opacity-30" />
+                                    <span className="text-sm font-medium">Dados de tipo de processo não disponíveis para este mês.</span>
+                                    <span className="text-xs text-slate-300">O breakdown CV/CR é populado durante a sincronização com a planilha.</span>
+                                  </div>
+                                ) : (
+                                  <div className="h-[220px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <BarChart data={cvCrData} layout="vertical" margin={{ top: 0, right: 40, left: 4, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                                        <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                                        <YAxis
+                                          type="category"
+                                          dataKey="name"
+                                          width={76}
+                                          tick={{ fontSize: 10, fill: "#475569", fontWeight: 700 }}
+                                          axisLine={false}
+                                          tickLine={false}
+                                        />
+                                        <Tooltip
+                                          contentStyle={{ fontSize: 12, borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}
+                                          formatter={(val: number, name: string, props: any) => [
+                                            `${val.toLocaleString("pt-BR")} proc.`,
+                                            name === "cv" ? "Cível (CV)" : name === "cr" ? "Criminal (CR)" : "Outros",
+                                          ]}
+                                          labelFormatter={(l) => cvCrData.find(x => x.name === l)?.fullName || l}
+                                        />
+                                        <Legend
+                                          wrapperStyle={{ fontSize: 10, fontWeight: 700, paddingTop: 8 }}
+                                          formatter={(val) => val === "cv" ? "Cível (CV)" : val === "cr" ? "Criminal (CR)" : "Outros"}
+                                        />
+                                        <Bar dataKey="cv" stackId="a" fill="#2563eb" radius={[0, 0, 0, 0]} maxBarSize={18} name="cv" />
+                                        <Bar dataKey="cr" stackId="a" fill="#7c3aed" maxBarSize={18} name="cr" />
+                                        {cvCrData.some(x => x.outros > 0) && (
+                                          <Bar dataKey="outros" stackId="a" fill="#94a3b8" radius={[0, 4, 4, 0]} maxBarSize={18} name="outros" />
+                                        )}
+                                      </BarChart>
+                                    </ResponsiveContainer>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          return null; // Fallback para setores sem gráfico exclusivo
+                        })()}
+
                         {/* Listagem dos Assessores do Setor */}
                         <div>
                           <div className="flex items-center justify-between mb-4">
@@ -3680,21 +4257,7 @@ export default function App() {
                                     }}
                                     className="bg-white border border-slate-200 hover:border-indigo-400 transition-all rounded-xl p-5 shadow-sm hover:shadow-md cursor-pointer flex flex-col relative group"
                                   >
-                                    {/* Botão de Atalho Semana de Prova */}
-                                    <button
-                                      title={assessor.semanaProva ? "Finalizar Semana de Provas" : "Definir Semana de Provas (Meio Período)"}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleToggleSemanaProva(assessor.id);
-                                      }}
-                                      className={`absolute top-4 right-4 p-1.5 rounded-lg border transition-all ${
-                                        assessor.semanaProva
-                                          ? "bg-violet-100 border-violet-300 text-violet-700 opacity-100"
-                                          : "bg-slate-50 border-slate-200 text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100"
-                                      } shadow-sm z-10`}
-                                    >
-                                      <GraduationCap className="w-3.5 h-3.5" />
-                                    </button>
+
 
                                     <div className="flex items-center gap-3 mb-4">
                                       <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-sm uppercase">
@@ -3743,12 +4306,7 @@ export default function App() {
                                         <span className="font-bold text-slate-900 font-mono">{assessor.detailAnalyzed} / {assessor.dailyGoal} proc.</span>
                                       </div>
 
-                                      {/* Semana de Prova Tag */}
-                                      {assessor.semanaProva && (
-                                        <span className="inline-flex items-center gap-0.5 text-[8px] font-black text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full mt-2 self-start select-none shadow-xs">
-                                          📝 Prova (Meio Período)
-                                        </span>
-                                      )}
+
                                     </div>
                                   </div>
                                 );
@@ -4469,22 +5027,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 py-1 select-none">
-                            <input
-                              type="checkbox"
-                              id="editSemanaProva"
-                              checked={semanaProvaIds.includes(selectedEstagiarioDetail)}
-                              onChange={() => handleToggleSemanaProva(selectedEstagiarioDetail)}
-                              className="w-4 h-4 text-violet-600 border-slate-350 rounded focus:ring-violet-500 cursor-pointer"
-                            />
-                            <label
-                              htmlFor="editSemanaProva"
-                              className="text-xs font-bold text-slate-600 cursor-pointer flex items-center gap-1.5"
-                            >
-                              <GraduationCap className="w-3.5 h-3.5 text-violet-500" />
-                              Semana de Provas (Meio Período)
-                            </label>
-                          </div>
+
 
                           <div className="flex gap-2 pt-2">
                             <button
@@ -4548,12 +5091,7 @@ export default function App() {
                                   Matrícula: {detailedEstagiario.matricula}
                                 </span>
                               )}
-                              {detailedEstagiario.semanaProva && (
-                                <span className="px-1.5 py-0.5 bg-violet-950 text-violet-200 border border-violet-800 rounded text-[9px] font-mono flex items-center gap-0.5 animate-pulse">
-                                  <GraduationCap className="w-2.5 h-2.5 text-violet-400" />
-                                  Semana de Prova
-                                </span>
-                              )}
+
                               <span>
                                 • Meta Diária: {detailedEstagiario.dailyGoal}
                               </span>

@@ -12,7 +12,7 @@ import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
 
-const APP_URL = 'http://localhost:3005';
+const APP_URL = 'http://localhost:3001';
 const TARGET_ACCOUNT_EMAIL = 'controleassessoria'; // e-mail ou prefixo da conta de controle
 const USER_DATA_DIR = './puppeteer_user_data';
 const MARKER_FILE = path.join(USER_DATA_DIR, 'login_success.marker');
