@@ -5400,322 +5400,67 @@ export default function App() {
                   </div>
 
                   {/* Connection Section */}
-                  <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4.5">
-                    <h4 className="text-xs font-bold text-emerald-900 uppercase tracking-wider mb-2">
-                      Opção A: Integração em Tempo Real por Link
-                    </h4>
-                    <p className="text-xs text-slate-600 mb-3 leading-relaxed">
-                      Acompanhe em tempo real as atualizações de sua equipe.
-                      Cole o link do seu Google Planilhas.
-                    </p>
-
-                    {/* Step-by-step Quick Guide */}
-                    <div className="my-3 p-3 bg-white border border-emerald-100 rounded-lg space-y-2 text-[11px] text-slate-700 leading-relaxed">
-                      <p className="font-bold text-emerald-800 uppercase tracking-wide text-[10px]">
-                        💡 Formatação de Colunas Sucedida:
-                      </p>
-                      <ul className="list-disc pl-4 space-y-1">
-                        <li>
-                          <strong>Formato Matriz (Mais prático):</strong> A
-                          primeira coluna deve se chamar{" "}
-                          <code className="bg-slate-100 px-1 py-0.5 rounded text-rose-600 font-mono">
-                            Data
-                          </code>
-                          . As demais colunas devem ser os{" "}
-                          <strong>nomes dos estagiários</strong>. Cada célula
-                          receberá o número de processos daquele dia.
-                        </li>
-                        <li>
-                          <strong>Formato Lista:</strong> Deve conter as colunas{" "}
-                          <code className="bg-slate-100 px-1 py-0.5 rounded text-rose-600 font-mono">
-                            Data
-                          </code>
-                          ,{" "}
-                          <code className="bg-slate-100 px-1 py-0.5 rounded text-rose-600 font-mono">
-                            Estagiário
-                          </code>{" "}
-                          (ou Nome) e{" "}
-                          <code className="bg-slate-100 px-1 py-0.5 rounded text-rose-600 font-mono">
-                            Quantidade
-                          </code>{" "}
-                          (ou Casos/Produtividade).
-                        </li>
-                        <li>
-                          <strong>Auto-Cadastro Automático:</strong> Qualquer
-                          estagiário novo inserido na planilha será{" "}
-                          <strong>criado automaticamente</strong> e vinculado
-                          aos seus respectivos números de processos.
-                          Duplicidades e redundâncias de lançamentos são
-                          consolidadas e somadas de forma limpa!
-                        </li>
-                      </ul>
-                      <div className="pt-1.5 border-t border-slate-100 text-[10px] text-slate-500">
-                        <strong>Acesso Público:</strong> Selecione "Arquivo"
-                        &gt; "Compartilhar" &gt; "Qualquer pessoa com o link"
-                        (Leitor) ou publique a planilha na web.
+                  <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4.5 space-y-4">
+                    {lastSyncTime && spreadsheetUrl && (
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 rounded-lg text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          Planilha Vinculada no Banco de Dados
+                        </div>
+                        <p className="text-slate-600 font-mono text-[10px] truncate">
+                          {spreadsheetUrl}
+                        </p>
+                        <p className="text-[10px] text-emerald-700">
+                          Última sincronização efetuada em:{" "}
+                          <strong>
+                            {new Date(lastSyncTime).toLocaleString("pt-BR")}
+                          </strong>
+                        </p>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="space-y-3">
-                      {lastSyncTime && spreadsheetUrl && (
-                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 rounded-lg text-xs space-y-1">
-                          <div className="flex items-center gap-1.5 font-bold">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                            Planilha Vinculada no Banco de Dados
-                          </div>
-                          <p className="text-slate-600 font-mono text-[10px] truncate">
-                            {spreadsheetUrl}
-                          </p>
-                          <p className="text-[10px] text-emerald-700">
-                            Última sincronização efetuada em:{" "}
+                    {sheetSyncError && (
+                      <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-900 rounded-lg text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold text-rose-800">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+                          Atenção na Sincronização
+                        </div>
+                        <p className="text-slate-700 text-[11px] leading-relaxed">
+                          {sheetSyncError}
+                        </p>
+                        {!googleUser && (
+                          <p className="text-[10px] text-rose-800 font-bold mt-1">
+                            👉 Dica: Se a sua planilha é privada, clique no
+                            botão{" "}
                             <strong>
-                              {new Date(lastSyncTime).toLocaleString("pt-BR")}
-                            </strong>
+                              "Segurança de Dados: Acesso Privado"
+                            </strong>{" "}
+                            acima para conectar sua conta Google e autorizar o
+                            acesso.
                           </p>
-                        </div>
-                      )}
-
-                      {sheetSyncError && (
-                        <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-900 rounded-lg text-xs space-y-1">
-                          <div className="flex items-center gap-1.5 font-bold text-rose-800">
-                            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-                            Atenção na Sincronização
-                          </div>
-                          <p className="text-slate-700 text-[11px] leading-relaxed">
-                            {sheetSyncError}
-                          </p>
-                          {!googleUser && (
-                            <p className="text-[10px] text-rose-800 font-bold mt-1">
-                              👉 Dica: Se a sua planilha é privada, clique no
-                              botão{" "}
-                              <strong>
-                                "Segurança de Dados: Acesso Privado"
-                              </strong>{" "}
-                              acima para conectar sua conta Google e autorizar o
-                              acesso.
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="space-y-2.5">
-                        <div className="flex flex-col gap-3">
-                          <div>
-                            <label className="block text-[9px] uppercase font-bold text-emerald-800 tracking-wider mb-1">
-                              Link do Google Planilhas
-                            </label>
-                            <input
-                              type="url"
-                              placeholder="Cole o link do Google Sheets ou Planilha Publicada..."
-                              value={spreadsheetUrl}
-                              onChange={(e) => setSpreadsheetUrl(e.target.value)}
-                              className="w-full px-3 py-2 bg-white border border-slate-350 rounded-lg text-xs outline-none focus:border-emerald-500 font-mono shadow-3xs"
-                            />
-                          </div>
-                        </div>
-                        <div className="flex justify-end pt-1">
-                          <button
-                            onClick={() =>
-                              triggerSheetsSync(spreadsheetUrl, estagiarios)
-                            }
-                            disabled={syncingSheets}
-                            className="bg-emerald-700 text-white hover:bg-emerald-800 px-5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 font-sans shadow-xs"
-                          >
-                            {syncingSheets
-                              ? `Sincronizando (${syncDuration.toFixed(1)}s)...`
-                              : "Sincronizar Planilha Agora"}
-                          </button>
-                        </div>
+                        )}
                       </div>
+                    )}
 
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-emerald-100/50">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            id="chk-auto-sync"
-                            checked={autoSyncEnabled}
-                            onChange={(e) =>
-                              setAutoSyncEnabled(e.target.checked)
-                            }
-                            className="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
-                          />
-                          <label
-                            htmlFor="chk-auto-sync"
-                            className="text-xs font-bold text-slate-700 cursor-pointer"
-                          >
-                            Sincronizar automaticamente ao carregar o site
-                            (Real-Time Ativo)
-                          </label>
-                        </div>
-
-                        <div className="flex gap-2 shrink-0">
-                          {spreadsheetUrl && (
-                            <button
-                              onClick={handleUnlinkSheet}
-                              className="px-3 py-1.5 border border-red-200 text-red-700 hover:bg-red-50 rounded-lg text-[11px] font-bold transition-all cursor-pointer"
-                            >
-                              Remover Vínculo
-                            </button>
-                          )}
-                          <button
-                            onClick={handleSaveSheetSettings}
-                            disabled={isSaving}
-                            className="bg-slate-900 text-white hover:bg-slate-800 px-3.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer disabled:opacity-55"
-                          >
-                            {isSaving
-                              ? `Gravando e Sincronizando (${syncDuration.toFixed(1)}s)...`
-                              : "Salvar Vínculo"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Direct clipboard copy paste area */}
-                  <div className="border border-slate-200 rounded-xl p-4.5 bg-slate-50/50">
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
-                      Opção B: Cola Rápido da Área de Trabalho (Suporte Excel /
-                      TSV)
-                    </h4>
-                    <p className="text-xs text-slate-650 text-slate-500 mb-3 leading-relaxed">
-                      Não quer configurar links? Copie as linhas da sua planilha
-                      (contendo colunas como Data, Nome do Estagiário, Casos
-                      Concluídos) e cole-as abaixo:
-                    </p>
-
-                    <textarea
-                      rows={4}
-                      placeholder="Cole aqui (Ex:&#10;Data;Estagiário;Quantidade&#10;18/06/2026;Dr. Antonio;12&#10;18/06/2026;Dra. Jane;8)"
-                      value={pasteDataText}
-                      onChange={(e) => setPasteDataText(e.target.value)}
-                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono outline-none focus:border-slate-500 mb-2.5 resize-none"
-                    ></textarea>
-
-                    <div className="flex justify-end">
+                    <div className="flex justify-center pt-1">
                       <button
-                        onClick={handleImportPastedData}
-                        className="px-4 py-1.5 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                        onClick={() =>
+                          triggerSheetsSync(spreadsheetUrl, estagiarios)
+                        }
+                        disabled={syncingSheets}
+                        className="bg-emerald-700 text-white hover:bg-emerald-800 px-6 py-3 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 font-sans shadow-md w-full justify-center"
                       >
-                        Processar Dados Colados
+                        {syncingSheets ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                            <span>Sincronizando ({syncDuration.toFixed(1)}s)...</span>
+                          </>
+                        ) : (
+                          "Sincronizar Planilha Agora"
+                        )}
                       </button>
                     </div>
                   </div>
-
-                  {/* Preview Section */}
-                  {(previewEntries.length > 0 ||
-                    previewEstagiariosToCreate.length > 0 ||
-                    sheetsMessage) && (
-                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
-                      <div className="px-4 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-800 uppercase">
-                          Prévia dos Dados Processados
-                        </span>
-                        <span className="text-[10px] bg-emerald-50 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                          Formato Válido Detectado
-                        </span>
-                      </div>
-
-                      <div className="p-4 space-y-3.5 max-h-48 overflow-y-auto">
-                        {sheetsMessage && (
-                          <p className="text-[11px] font-semibold text-slate-650 text-emerald-800 bg-emerald-50 p-2 rounded">
-                            {sheetsMessage}
-                          </p>
-                        )}
-
-                        {previewEstagiariosToCreate.length > 0 && (
-                          <div>
-                            <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-1">
-                              ⚠️ Novos Estagiários que serão auto-criados (
-                              {previewEstagiariosToCreate.length}):
-                            </p>
-                            <div className="flex flex-wrap gap-1">
-                              {previewEstagiariosToCreate.map((name, i) => (
-                                <span
-                                  key={i}
-                                  className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-0.5 rounded-full font-semibold"
-                                >
-                                  {name}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {previewEntries.length > 0 && (
-                          <div>
-                            <p className="text-xs font-bold text-slate-800 uppercase tracking-wide mb-1.5">
-                              Lançamentos de Produtividade a Importar (
-                              {previewEntries.length}):
-                            </p>
-                            <table className="w-full text-left font-mono text-[11px] border-collapse">
-                              <thead>
-                                <tr className="bg-slate-100/80 border-b border-slate-200 text-[10px] text-slate-500 font-bold lowercase">
-                                  <th className="p-1 px-2">Data</th>
-                                  <th className="p-1 px-2">Estagiário Cod</th>
-                                  <th className="p-1 px-2 text-right">
-                                    Processos_Concluídos
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {previewEntries
-                                  .slice(0, 10)
-                                  .map((entry, index) => (
-                                    <tr
-                                      key={index}
-                                      className="border-b border-slate-100"
-                                    >
-                                      <td className="p-1 px-2">
-                                        {entry.date
-                                          .split("-")
-                                          .reverse()
-                                          .join("/")}
-                                      </td>
-                                      <td className="p-1 px-2 font-semibold text-slate-700">
-                                        {entry.estagiarioId}
-                                      </td>
-                                      <td className="p-1 px-2 text-right font-bold">
-                                        {entry.count}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                {previewEntries.length > 10 && (
-                                  <tr>
-                                    <td
-                                      colSpan={3}
-                                      className="p-1 py-1 px-2 text-[10px] text-slate-400 italic text-center"
-                                    >
-                                      + {previewEntries.length - 10} linhas
-                                      ocultadas da visualização rápida...
-                                    </td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-                        <span className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg animate-pulse">
-                          ✨ Dados sincronizados e gravados no Banco com
-                          sucesso!
-                        </span>
-                        <button
-                          onClick={() => {
-                            setIsSheetsModalOpen(false);
-                            setPreviewEntries([]);
-                            setPreviewEstagiariosToCreate([]);
-                            setPreviewEstagiariosDetailed([]);
-                            setPasteDataText("");
-                          }}
-                          className="w-full sm:w-auto px-5 py-2 bg-emerald-800 text-white hover:bg-emerald-900 text-xs font-extrabold rounded-lg transition-all cursor-pointer shadow"
-                        >
-                          Confirmar e Fechar
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
