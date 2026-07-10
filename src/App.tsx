@@ -2462,11 +2462,22 @@ export default function App() {
         (sum, item) => sum + item.count,
         0,
       );
-      const daysWorked = filteredEntries.filter(
+
+      // Para fins de cálculo de média e dias trabalhados, desconsideramos fim de semana
+      const isWeekend = (dateStr: string) => {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        const day = new Date(y, m - 1, d).getDay();
+        return day === 0 || day === 6;
+      };
+
+      const weekdayEntries = filteredEntries.filter(e => !isWeekend(e.date));
+      const totalAnalyzedWeekdays = weekdayEntries.reduce((sum, item) => sum + item.count, 0);
+
+      const daysWorked = weekdayEntries.filter(
         (item) => item.count > 0,
       ).length;
       const averagePerDay =
-        daysWorked > 0 ? Number((totalAnalyzed / daysWorked).toFixed(1)) : 0;
+        daysWorked > 0 ? Number((totalAnalyzedWeekdays / daysWorked).toFixed(1)) : 0;
 
       const todayEntry = normalizedEntries.find(
         (e) => e.estagiarioId === estagiario.id && e.date === todayStr,
@@ -2711,6 +2722,46 @@ export default function App() {
       };
     });
   }, [normalizedEntries, selectedMonth]);
+  // Feitos por dia pela equipe com média por assessor ativo
+  const dailyTeamDoneData = useMemo(() => {
+    if (!selectedMonth) return [];
+    const [y, m] = selectedMonth.split("-");
+    const year = parseInt(y, 10);
+    const month = parseInt(m, 10);
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    const data = [];
+    const isWeekend = (dateStr: string) => {
+      const [yy, mm, dd] = dateStr.split("-").map(Number);
+      const day = new Date(yy, mm - 1, dd).getDay();
+      return day === 0 || day === 6;
+    };
+
+    for (let i = 1; i <= daysInMonth; i++) {
+      const dStr = `${year}-${String(month).padStart(2, "0")}-${String(i).padStart(2, "0")}`;
+      
+      const dayEntries = normalizedEntries.filter(e => e.date === dStr);
+      const totalCount = dayEntries.reduce((sum, e) => sum + e.count, 0);
+      const activeAssessors = dayEntries.filter(e => e.count > 0).length;
+      
+      const media = activeAssessors > 0 ? Number((totalCount / activeAssessors).toFixed(1)) : 0;
+      
+      const dayOfWeekNum = new Date(year, month - 1, i).getDay();
+      const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+      const dayOfWeekLabel = weekDays[dayOfWeekNum];
+
+      data.push({
+        dateStr: dStr,
+        dia: String(i).padStart(2, "0"),
+        dayOfWeekLabel,
+        total: totalCount,
+        media,
+        isWeekend: dayOfWeekNum === 0 || dayOfWeekNum === 6
+      });
+    }
+
+    return data;
+  }, [normalizedEntries, selectedMonth]);
 
   // Weekly Ranking List (Sorted descending by total productivity in the week containing selectedDetailDate)
   const weeklyRankingList = useMemo(() => {
@@ -2731,75 +2782,27 @@ export default function App() {
       (e) => e.date >= startStr && e.date <= endStr
     );
     
-    // Sum counts and type breakdown per estagiario
+    // Sum counts per estagiario
     const countsMap: Record<string, number> = {};
     const totalForPctMap: Record<string, number> = {};
-    const typeBreakdownMap: Record<string, Record<string, number>> = {};
     
     weekEntries.forEach((e) => {
-      let redCount = 0;
-      if (e.typeBreakdown) {
-        redCount += (e.typeBreakdown["REDCV"] || 0);
-        redCount += (e.typeBreakdown["REDCR"] || 0);
-        redCount += (e.typeBreakdown["REVCR"] || 0);
-      }
-      
-      const entryProductivity = Math.max(0, e.count - redCount);
+      const entryProductivity = e.count;
       countsMap[e.estagiarioId] = (countsMap[e.estagiarioId] || 0) + entryProductivity;
       totalForPctMap[e.estagiarioId] = (totalForPctMap[e.estagiarioId] || 0) + e.count;
-      
-      if (!typeBreakdownMap[e.estagiarioId]) {
-        typeBreakdownMap[e.estagiarioId] = {};
-      }
-      
-      if (e.typeBreakdown) {
-        Object.entries(e.typeBreakdown).forEach(([type, count]) => {
-          const targetType = type.toUpperCase();
-          typeBreakdownMap[e.estagiarioId][targetType] = (typeBreakdownMap[e.estagiarioId][targetType] || 0) + Number(count);
-        });
-      }
     });
 
-    const emojiMap: Record<string, string> = {
-      CV: "🔵",
-      RCV: "🔵",
-      DCV: "🟡",
-      CR: "🟣",
-      RCR: "🟣",
-      DCR: "🔴",
-      REDCV: "🔴",
-      REDCR: "🔴",
-      REVCR: "🔴",
-    };
-    
     // Map to list and sort descending
     return estagiarios
       .map((est) => {
         const count = countsMap[est.id] || 0;
-        const breakdownObj = typeBreakdownMap[est.id] || {};
         
-        const estagiarioTotalBreakdown = Object.values(breakdownObj).reduce((sum, val) => sum + val, 0);
-        
-        const breakdown = Object.entries(breakdownObj)
-          .map(([type, val]) => {
-            const pct = estagiarioTotalBreakdown > 0 ? Math.round((val / estagiarioTotalBreakdown) * 100) : 0;
-            return {
-              type,
-              pct,
-              emoji: emojiMap[type] || "⚪"
-            };
-          })
-          .filter((b) => b.pct > 0);
-
-        const order = ["CV", "RCV", "DCV", "CR", "RCR", "DCR", "REDCV", "REDCR", "REVCR"];
-        breakdown.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
-
         return {
           id: est.id,
           name: est.name,
           count,
-          breakdown,
-          totalForPct: estagiarioTotalBreakdown,
+          breakdown: [] as { type: string; pct: number; emoji: string }[],
+          totalForPct: totalForPctMap[est.id] || 0,
         };
       })
       .filter((e) => e.count > 0 || e.totalForPct > 0)
@@ -4401,120 +4404,56 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Distribution Pie Chart */}
+                    {/* Tabela de Feitos por Dia e Média */}
                     <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col justify-between">
-                      <h2 className="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-2 mb-4">
-                        <Grid className="w-4 h-4 text-emerald-500" />
-                        DISTRIBUIÇÃO POR CATEGORIA
-                      </h2>
-                      <div className="h-[220px] w-full relative flex items-center justify-center">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={distributionChartData}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={55}
-                              outerRadius={75}
-                              paddingAngle={4}
-                              dataKey="value"
-                              stroke="none"
-                            >
-                              {distributionChartData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.fill} />
-                              ))}
-                            </Pie>
-                            <Tooltip
-                              contentStyle={{
-                                borderRadius: "8px",
-                                border: "none",
-                                boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                              }}
-                              itemStyle={{
-                                fontWeight: "bold",
-                                color: "#0f172a",
-                              }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                        {/* Centered Total */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-3xl font-light text-slate-800">
-                            {distributionChartData.reduce((s, e) => s + e.value, 0)}
-                          </span>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                            Processos
-                          </span>
-                        </div>
+                      <div className="mb-4">
+                        <h2 className="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                          <CalendarDays className="w-4 h-4 text-indigo-500" />
+                          FEITOS POR DIA E MÉDIA
+                        </h2>
+                        <p className="text-[10px] text-slate-400 font-semibold mt-1 uppercase tracking-wider">
+                          Lista diária de processos concluídos e média por assessor ativo
+                        </p>
                       </div>
-                      {/* Legend below */}
-                      <div className="flex flex-wrap gap-3 justify-center mt-4 border-t border-slate-50 pt-3">
-                        {(() => {
-                          const distTotal = distributionChartData.reduce((s, e) => s + e.value, 0);
-                          return distributionChartData.map((entry, index) => {
-                            const pct = distTotal > 0 ? Math.round((entry.value / distTotal) * 100) : 0;
-                            return (
-                              <div key={index} className="flex items-center gap-1.5">
-                                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: entry.fill }}></div>
-                                <span className="text-[10px] font-semibold text-slate-600">
-                                  {entry.name} {entry.value} ({pct}%)
-                                </span>
-                              </div>
-                            );
-                          });
-                        })()}
+                      
+                      <div className="h-[250px] overflow-y-auto border border-slate-100 rounded-lg pr-1">
+                        <table className="w-full text-left border-collapse">
+                          <thead className="bg-slate-50 text-[9px] text-slate-400 font-extrabold tracking-wider uppercase sticky top-0 border-b border-slate-200">
+                            <tr>
+                              <th className="px-3 py-2">Dia</th>
+                              <th className="px-3 py-2 text-center">Processos Feitos</th>
+                              <th className="px-3 py-2 text-right">Média / Assessor</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-xs divide-y divide-slate-100 font-mono">
+                            {dailyTeamDoneData.map((item) => (
+                              <tr 
+                                key={item.dateStr} 
+                                onClick={() => setSelectedDetailDate(item.dateStr)}
+                                className={`cursor-pointer transition-colors ${
+                                  selectedDetailDate === item.dateStr
+                                    ? "bg-indigo-50/70 hover:bg-indigo-50"
+                                    : item.isWeekend 
+                                      ? "bg-slate-50/[0.4] hover:bg-slate-100/[0.5] text-slate-400" 
+                                      : "hover:bg-slate-50 text-slate-700"
+                                }`}
+                              >
+                                <td className="px-3 py-2 font-bold">
+                                  {item.dia}/{selectedMonth.split("-")[1]} <span className="text-[10px] font-normal text-slate-450 ml-1">({item.dayOfWeekLabel})</span>
+                                </td>
+                                <td className="px-3 py-2 text-center font-bold">
+                                  <span className={item.total > 0 ? "text-slate-800" : "text-slate-350"}>
+                                    {item.total}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-right font-bold text-indigo-650">
+                                  {item.media > 0 ? `${item.media} proc.` : "—"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                      {/* Sector breakdown */}
-                      {(() => {
-                        const sectorSums: Record<string, number> = {
-                          "público": 0,
-                          "privado 1": 0,
-                          "privado 2": 0,
-                          "privado 3": 0,
-                          "crime": 0
-                        };
-                        parsedEstagiariosData.forEach((e) => {
-                          const s = e.sector || "público";
-                          if (sectorSums[s] !== undefined) {
-                            sectorSums[s] += e.totalAnalyzed || 0;
-                          }
-                        });
-                        const total = Object.values(sectorSums).reduce((a, b) => a + b, 0);
-                        if (total === 0) return null;
-                        
-                        const barColors: Record<string, string> = {
-                          "público": "bg-blue-600",
-                          "privado 1": "bg-sky-400",
-                          "privado 2": "bg-teal-400",
-                          "privado 3": "bg-emerald-500",
-                          "crime": "bg-purple-500"
-                        };
-
-                        return (
-                          <div className="mt-3 pt-3 border-t border-slate-100 w-full">
-                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                              Participação por Setor
-                            </h3>
-                            <div className="space-y-2">
-                              {Object.entries(sectorSums).map(([sec, val]) => {
-                                const pct = Math.round((val / total) * 100);
-                                if (val === 0) return null;
-                                return (
-                                  <div key={sec} className="w-full">
-                                    <div className="flex justify-between text-[10px] mb-0.5">
-                                      <span className="font-semibold text-slate-700 capitalize">{sec}</span>
-                                      <span className="font-mono font-bold text-slate-900">{val} ({pct}%)</span>
-                                    </div>
-                                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                      <div className={`h-full rounded-full transition-all ${barColors[sec] || "bg-indigo-500"}`} style={{ width: `${pct}%` }}></div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })()}
                     </div>
                   </div>
 
@@ -4576,50 +4515,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Team-wide process type breakdown */}
-                      {(() => {
-                        const teamBreakdown: Record<string, number> = {};
-                        parsedEstagiariosData.forEach((est) => {
-                          if (est.detailTypeBreakdown && Object.keys(est.detailTypeBreakdown).length > 0) {
-                            Object.entries(est.detailTypeBreakdown).forEach(([tipo, qtd]) => {
-                              teamBreakdown[tipo] = (teamBreakdown[tipo] || 0) + Number(qtd);
-                            });
-                          } else {
-                            const procs = allDetailedProcesses[est.id];
-                            if (procs) {
-                              Object.values(procs).filter((p: any) => p.date === selectedDetailDate).forEach((p: any) => {
-                                const o = p.origem || 'CV';
-                                teamBreakdown[o] = (teamBreakdown[o] || 0) + 1;
-                              });
-                            }
-                          }
-                        });
-
-                        const ORIGEM_COLORS: Record<string, string> = {
-                          CV: '#2563eb', RCV: '#3b82f6', DCV: '#60a5fa', REDCV: '#ef4444',
-                          CR: '#7c3aed', RCR: '#8b5cf6', DCR: '#a78bfa', REDCR: '#dc2626', REVCR: '#f87171',
-                        };
-                        const order = ['CV','RCV','DCV','REDCV','CR','RCR','DCR','REDCR','REVCR'];
-                        const sorted = Object.entries(teamBreakdown)
-                          .filter(([, v]) => Number(v) > 0)
-                          .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
-                        if (sorted.length === 0) return (
-                          <span className="text-xs text-slate-400 font-medium">Nenhum lançamento no dia.</span>
-                        );
-                        return (
-                          <div className="flex flex-wrap gap-2 justify-end">
-                            {sorted.map(([tipo, count]) => (
-                              <span
-                                key={tipo}
-                                className="text-[10px] font-bold px-2.5 py-1 rounded-lg"
-                                style={{ backgroundColor: (ORIGEM_COLORS[tipo] || '#94a3b8') + '15', color: ORIGEM_COLORS[tipo] || '#94a3b8', border: `1px solid ${(ORIGEM_COLORS[tipo] || '#94a3b8')}33` }}
-                              >
-                                {tipo}: {count}
-                              </span>
-                            ))}
-                          </div>
-                        );
-                      })()}
+                      {/* Team-wide process type breakdown removido */}
                     </div>
                   </div>
 
@@ -5306,12 +5202,6 @@ export default function App() {
                                       }
                                     }
 
-                                    // Cores dos badges
-                                    const isCrime = proc.origem.includes("CR");
-                                    const badgeColor = isCrime
-                                      ? "bg-rose-50 text-rose-700 border border-rose-200"
-                                      : "bg-blue-50 text-blue-700 border border-blue-200";
-
                                     return (
                                       <div key={proc.numeroProcesso} className="relative">
                                         {/* Marcador na linha do tempo */}
@@ -5332,9 +5222,6 @@ export default function App() {
                                           <div className="flex justify-between items-start">
                                             <span className="font-mono text-xs text-slate-800 font-bold break-all">
                                               {proc.numeroProcesso}
-                                            </span>
-                                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full select-none shrink-0 ${badgeColor}`}>
-                                              {proc.origem}
                                             </span>
                                           </div>
                                           <div className="flex justify-between items-center mt-1.5 pt-1.5 border-t border-dashed border-slate-100">
