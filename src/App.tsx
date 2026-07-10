@@ -507,16 +507,32 @@ export default function App() {
 
       // 3. Carregar configurações da planilha (somente leitura — anon pode ler)
       const settingsSnap = await getDoc(doc(db, "settings", "googleSheet"));
+      let activeUrl = DEFAULT_SHEET_URL;
+      let autoSync = true;
+      let lastSync = "";
+
       if (settingsSnap.exists()) {
         const settingsData = settingsSnap.data();
-        setSpreadsheetUrl(settingsData.url || DEFAULT_SHEET_URL);
-        setAutoSyncEnabled(
-          settingsData.autoSync !== undefined ? settingsData.autoSync : true,
-        );
-        // Sempre usa "Dados-GR" — conforme a nova especificação
-        setSelectedSheetName("Dados-GR");
-        setLastSyncTime(settingsData.lastSync || "");
+        activeUrl = settingsData.url || DEFAULT_SHEET_URL;
+        autoSync = settingsData.autoSync !== undefined ? settingsData.autoSync : true;
+        lastSync = settingsData.lastSync || "";
       }
+
+      // Se a URL do banco estiver desatualizada, forçamos a nova e atualizamos o banco de dados
+      if (activeUrl !== DEFAULT_SHEET_URL) {
+        activeUrl = DEFAULT_SHEET_URL;
+        setDoc(doc(db, "settings", "googleSheet"), {
+          url: DEFAULT_SHEET_URL,
+          autoSync: autoSync,
+          lastSync: lastSync
+        }).catch(err => console.error("Erro ao salvar settings da planilha padrão no Supabase:", err));
+      }
+
+      setSpreadsheetUrl(activeUrl);
+      setAutoSyncEnabled(autoSync);
+      // Sempre usa "Dados-GR" — conforme a nova especificação
+      setSelectedSheetName("Dados-GR");
+      setLastSyncTime(lastSync);
 
       // Não tenta criar settings se não existir — o usuário autenticado fará isso depois
     } catch (error) {
@@ -2512,6 +2528,13 @@ export default function App() {
       if (ratio >= 100 && totalAnalyzed > 0) status = "ALTO";
       else if (ratio < 70 || totalAnalyzed === 0) status = "ATENÇÃO";
 
+      const entriesList = filteredEntries.filter(entry => {
+        if (isWeekend(entry.date)) {
+          return entry.count > 0;
+        }
+        return true;
+      });
+
       return {
         ...estagiario,
         sector,
@@ -2528,7 +2551,7 @@ export default function App() {
         daysWorked,
         averagePerDay,
         status,
-        entriesList: filteredEntries,
+        entriesList,
       };
     });
   }, [estagiarios, normalizedEntries, selectedMonth, selectedDetailDate]);
