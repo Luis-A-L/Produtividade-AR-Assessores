@@ -21,6 +21,7 @@ import {
   batchUpsertEntries,
   subscribeToAssessores as subscribeToEstagiarios,
   subscribeToSettings,
+  subscribeToEntries as subscribeToProductivityEntries,
 } from "./lib/stubs";
 import { fetchSheetDataDirectly, getSession, supabase } from "./lib/supabase";
 import { Assessor as Estagiario, ProductivityEntry, INITIAL_ASSESSORES as INITIAL_ESTAGIARIOS } from "./lib/types";
@@ -1912,9 +1913,27 @@ export default function App() {
       }
     });
 
+    const unsubEntries = subscribeToProductivityEntries(
+      (updated) => {
+        setEntries((prev) => {
+          const idx = prev.findIndex((e) => e.id === updated.id);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = updated;
+            return next;
+          }
+          return [...prev, updated];
+        });
+      },
+      (deletedId) => {
+        setEntries((prev) => prev.filter((e) => e.id !== deletedId));
+      }
+    );
+
     return () => {
       unsubEstag();
       unsubSettings();
+      unsubEntries();
     };
   }, []);
 
