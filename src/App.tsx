@@ -2745,6 +2745,7 @@ export default function App() {
       };
     });
   }, [normalizedEntries, selectedMonth]);
+
   // Feitos por dia pela equipe com média por assessor ativo
   const dailyTeamDoneData = useMemo(() => {
     if (!selectedMonth) return [];
@@ -4353,9 +4354,9 @@ export default function App() {
                   className="flex flex-col gap-6"
                 >
                   {/* Charts Row */}
-                  <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1.2fr] gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Daily Productivity Bar/Line Chart */}
-                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col justify-between">
+                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 lg:col-span-2">
                       <h2 className="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-2 mb-4">
                         <TrendingUp className="w-4 h-4 text-indigo-500" />
                         PRODUTIVIDADE DIÁRIA (
@@ -4368,9 +4369,9 @@ export default function App() {
                             style={{ cursor: "pointer" }}
                             onClick={(state) => {
                               if (state && state.activeTooltipIndex !== undefined && dailyTrendsData[state.activeTooltipIndex]) {
-                                const clickedData = dailyTrendsData[state.activeTooltipIndex];
-                                const formattedClickedDate = `${selectedMonth}-${clickedData.dia}`;
-                                setSelectedDetailDate(formattedClickedDate);
+                                  const clickedData = dailyTrendsData[state.activeTooltipIndex];
+                                  const formattedClickedDate = `${selectedMonth}-${clickedData.dia}`;
+                                  setSelectedDetailDate(formattedClickedDate);
                               }
                             }}
                             margin={{
@@ -4427,56 +4428,118 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Tabela de Feitos por Dia e Média */}
+                    {/* Produtividade por Setor Pie Chart */}
                     <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col justify-between">
-                      <div className="mb-4">
-                        <h2 className="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                          <CalendarDays className="w-4 h-4 text-indigo-500" />
-                          FEITOS POR DIA E MÉDIA
-                        </h2>
-                        <p className="text-[10px] text-slate-400 font-semibold mt-1 uppercase tracking-wider">
-                          Lista diária de processos concluídos e média por assessor ativo
-                        </p>
+                      <h2 className="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-2 mb-4">
+                        <Grid className="w-4 h-4 text-indigo-500" />
+                        PRODUTIVIDADE POR SETOR
+                      </h2>
+                      <div className="h-[200px] w-full relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={distributionChartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={50}
+                              outerRadius={70}
+                              paddingAngle={4}
+                              dataKey="value"
+                              stroke="none"
+                            >
+                              {distributionChartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{
+                                fontSize: "11px",
+                                borderRadius: "10px",
+                                border: "1px solid #e2e8f0",
+                              }}
+                              formatter={(val: number) => [`${val.toLocaleString("pt-BR")} proc.`]}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        {/* Centered Total */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                          <span className="text-2xl font-light text-slate-800">
+                            {distributionChartData.reduce((s, e) => s + e.value, 0).toLocaleString("pt-BR")}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-450 uppercase tracking-wider">
+                            Processos
+                          </span>
+                        </div>
                       </div>
-                      
-                      <div className="h-[250px] overflow-y-auto border border-slate-100 rounded-lg pr-1">
-                        <table className="w-full text-left border-collapse">
-                          <thead className="bg-slate-50 text-[9px] text-slate-400 font-extrabold tracking-wider uppercase sticky top-0 border-b border-slate-200">
-                            <tr>
-                              <th className="px-3 py-2">Dia</th>
-                              <th className="px-3 py-2 text-center">Processos Feitos</th>
-                              <th className="px-3 py-2 text-right">Média / Assessor</th>
+                      {/* Legend below */}
+                      <div className="flex flex-wrap gap-2 justify-center mt-2 border-t border-slate-50 pt-2">
+                        {(() => {
+                          const distTotal = distributionChartData.reduce((s, e) => s + e.value, 0);
+                          return distributionChartData.map((entry, index) => {
+                            const pct = distTotal > 0 ? Math.round((entry.value / distTotal) * 100) : 0;
+                            return (
+                              <div key={index} className="flex items-center gap-1">
+                                <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: entry.fill }}></div>
+                                <span className="text-[9px] font-semibold text-slate-600 uppercase">
+                                  {entry.name}: {pct}%
+                                </span>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tabela de Feitos por Dia e Média */}
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col">
+                    <div className="mb-4">
+                      <h2 className="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                        <CalendarDays className="w-4 h-4 text-indigo-500" />
+                        FEITOS POR DIA E MÉDIA
+                      </h2>
+                      <p className="text-[10px] text-slate-400 font-semibold mt-1 uppercase tracking-wider">
+                        Lista diária de processos concluídos e média por assessor ativo
+                      </p>
+                    </div>
+                    
+                    <div className="max-h-[250px] overflow-y-auto border border-slate-100 rounded-lg pr-1">
+                      <table className="w-full text-left border-collapse">
+                        <thead className="bg-slate-50 text-[9px] text-slate-400 font-extrabold tracking-wider uppercase sticky top-0 border-b border-slate-200">
+                          <tr>
+                            <th className="px-3 py-2">Dia</th>
+                            <th className="px-3 py-2 text-center">Processos Feitos</th>
+                            <th className="px-3 py-2 text-right">Média / Assessor</th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-xs divide-y divide-slate-100 font-mono">
+                          {dailyTeamDoneData.map((item) => (
+                            <tr 
+                              key={item.dateStr} 
+                              onClick={() => setSelectedDetailDate(item.dateStr)}
+                              className={`cursor-pointer transition-colors ${
+                                selectedDetailDate === item.dateStr
+                                  ? "bg-indigo-50/70 hover:bg-indigo-50"
+                                  : item.isWeekend 
+                                    ? "bg-slate-50/[0.4] hover:bg-slate-100/[0.5] text-slate-400" 
+                                    : "hover:bg-slate-50 text-slate-700"
+                              }`}
+                            >
+                              <td className="px-3 py-2 font-bold">
+                                {item.dia}/{selectedMonth.split("-")[1]} <span className="text-[10px] font-normal text-slate-450 ml-1">({item.dayOfWeekLabel})</span>
+                              </td>
+                              <td className="px-3 py-2 text-center font-bold">
+                                <span className={item.total > 0 ? "text-slate-800" : "text-slate-350"}>
+                                  {item.total}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right font-bold text-indigo-650">
+                                {item.media > 0 ? `${item.media} proc.` : "—"}
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody className="text-xs divide-y divide-slate-100 font-mono">
-                            {dailyTeamDoneData.map((item) => (
-                              <tr 
-                                key={item.dateStr} 
-                                onClick={() => setSelectedDetailDate(item.dateStr)}
-                                className={`cursor-pointer transition-colors ${
-                                  selectedDetailDate === item.dateStr
-                                    ? "bg-indigo-50/70 hover:bg-indigo-50"
-                                    : item.isWeekend 
-                                      ? "bg-slate-50/[0.4] hover:bg-slate-100/[0.5] text-slate-400" 
-                                      : "hover:bg-slate-50 text-slate-700"
-                                }`}
-                              >
-                                <td className="px-3 py-2 font-bold">
-                                  {item.dia}/{selectedMonth.split("-")[1]} <span className="text-[10px] font-normal text-slate-450 ml-1">({item.dayOfWeekLabel})</span>
-                                </td>
-                                <td className="px-3 py-2 text-center font-bold">
-                                  <span className={item.total > 0 ? "text-slate-800" : "text-slate-350"}>
-                                    {item.total}
-                                  </span>
-                                </td>
-                                <td className="px-3 py-2 text-right font-bold text-indigo-650">
-                                  {item.media > 0 ? `${item.media} proc.` : "—"}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
