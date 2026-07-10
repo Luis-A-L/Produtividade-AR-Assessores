@@ -4488,6 +4488,51 @@ export default function App() {
                           });
                         })()}
                       </div>
+
+                      {/* Participação por Setor (Barras horizontais) */}
+                      {(() => {
+                        const total = distributionChartData.reduce((s, e) => s + e.value, 0);
+                        if (total === 0) return null;
+                        
+                        const barColors: Record<string, string> = {
+                          "PÚBLICO": "bg-blue-600",
+                          "PRIVADO 1": "bg-sky-400",
+                          "PRIVADO 2": "bg-teal-400",
+                          "PRIVADO 3": "bg-emerald-500",
+                          "CRIME": "bg-purple-500"
+                        };
+
+                        return (
+                          <div className="mt-3 pt-3 border-t border-slate-100 w-full text-left">
+                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                              Participação por Setor
+                            </h3>
+                            <div className="space-y-2">
+                              {distributionChartData.map((entry) => {
+                                const pct = Math.round((entry.value / total) * 100);
+                                return (
+                                  <div key={entry.name} className="w-full">
+                                    <div className="flex justify-between text-[10px] mb-0.5">
+                                      <span className="font-semibold text-slate-700 capitalize">
+                                        {entry.name.toLowerCase()}
+                                      </span>
+                                      <span className="font-mono font-bold text-slate-900">
+                                        {entry.value.toLocaleString("pt-BR")} ({pct}%)
+                                      </span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full transition-all ${barColors[entry.name] || "bg-indigo-500"}`}
+                                        style={{ width: `${pct}%` }}
+                                      ></div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
