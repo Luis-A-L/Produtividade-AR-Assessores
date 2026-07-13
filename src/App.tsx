@@ -67,7 +67,7 @@ import {
   Bell,
   Zap,
   Lock,
-
+  LogIn,
   ArrowLeft,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -299,6 +299,7 @@ export default function App() {
   const [hasSpreadsheetAccess, setHasSpreadsheetAccess] = useState<
     boolean | null
   >(null);
+  const [showReauthPopup, setShowReauthPopup] = useState<boolean>(false);
   const [selectedDetailDate, setSelectedDetailDate] = useState<string>(getCurrentDate());
 
   // Notifications
@@ -337,9 +338,10 @@ export default function App() {
       if (result) {
         setGoogleUser(result.user);
         setGoogleToken(result.accessToken);
+        setShowReauthPopup(false);
         // If there's an existing URL, sync it instantly!
         if (spreadsheetUrl) {
-          triggerSheetsSync(spreadsheetUrl, estagiarios);
+          triggerSheetsSync(spreadsheetUrl, estagiarios, false);
         }
       }
     } catch (err: any) {
@@ -1357,13 +1359,14 @@ export default function App() {
       setLastSyncDuration(duration);
 
       if (showFeedback) {
-        setIsSheetsModalOpen(true);
+        showToast("Sincronização concluída com sucesso!", "success");
       }
     } catch (err: any) {
       console.error(err);
       const isQuotaError = err.status === 429 || (err.message && err.message.toLowerCase().includes("quota"));
       if (err.status === 401 || err.status === 403) {
         setHasSpreadsheetAccess(false);
+        setShowReauthPopup(true);
         // Se for erro de sessão expirada / token inválido (401), dispara o robô de reconexão automática
         if (err.status === 401) {
           console.warn("Detectado token do Google expirado (401). Disparando robô de reconexão...");
@@ -1380,6 +1383,7 @@ export default function App() {
       const isScopeError = errMsg.toLowerCase().includes("scope") || errMsg.toLowerCase().includes("insufficient");
       if (isScopeError) {
         errMsg = "Erro de Permissão (Escopo Insuficiente): A conta conectada não concedeu permissão para ler planilhas do Google. Por favor, faça logout do Google no banner ou menu lateral e reconecte, garantindo que autorizou o acesso às planilhas. Se o erro persistir, certifique-se de que o escopo de leitura do Sheets ('https://www.googleapis.com/auth/spreadsheets.readonly') está habilitado no provedor Google dentro do painel do Supabase.";
+        setShowReauthPopup(true);
       }
       setSheetSyncError(errMsg);
       if (showFeedback) {
@@ -2007,6 +2011,14 @@ export default function App() {
     hasAutoSyncedOnStartup,
     googleToken,
   ]);
+
+  // Sincroniza automaticamente quando o token do Google se tornar válido (reconectado)
+  useEffect(() => {
+    if (googleToken && googleToken !== "mock_token" && spreadsheetUrl && hasAutoSyncedOnStartup && !syncingSheets) {
+      triggerSheetsSync(spreadsheetUrl, estagiariosRef.current, false);
+      setShowReauthPopup(false);
+    }
+  }, [googleToken]);
 
   // Polling para "tempo real" a cada 60 segundos (diminuído consumo de requisições)
   useEffect(() => {
@@ -5603,6 +5615,81 @@ export default function App() {
                   >
                     Fechar Painel
                   </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* MODAL: POPUP DE RECONEXÃO DO GOOGLE */}
+        <AnimatePresence>
+          {showReauthPopup && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowReauthPopup(false)}
+                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              ></motion.div>
+
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden relative z-10 flex flex-col"
+              >
+                <div className="bg-amber-600 text-white px-6 py-4 flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-5 h-5" />
+                    <h3 className="text-sm font-bold uppercase tracking-wider">
+                      Sessão Google Expirada
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setShowReauthPopup(false)}
+                    className="text-amber-200 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Sua conexão com a conta do Google foi perdida ou expirou. Para que a sincronização em tempo real da planilha continue funcionando corretamente, por favor reconecte sua conta.
+                  </p>
+                  
+                  {sheetSyncError && (
+                    <div className="bg-rose-50 border border-rose-200 text-rose-800 text-[11px] p-3 rounded-lg font-mono break-words leading-relaxed max-h-24 overflow-y-auto">
+                      <strong>Erro técnico:</strong> {sheetSyncError}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2 pt-2">
+                    <button
+                      onClick={handleGoogleLogin}
+                      disabled={isLoggingInGoogle}
+                      className="bg-amber-650 text-white hover:bg-amber-700 px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 font-sans shadow-md"
+                    >
+                      {isLoggingInGoogle ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                          <span>Conectando ao Google...</span>
+                        </>
+                      ) : (
+                        <>
+                          <LogIn className="w-4 h-4" />
+                          <span>Reconectar Conta Google</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setShowReauthPopup(false)}
+                      className="px-4 py-2 border border-slate-300 text-slate-500 hover:bg-slate-50 hover:text-slate-700 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                    >
+                      Depois
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             </div>
