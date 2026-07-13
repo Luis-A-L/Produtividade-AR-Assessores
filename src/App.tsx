@@ -1364,7 +1364,22 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       const isQuotaError = err.status === 429 || (err.message && err.message.toLowerCase().includes("quota"));
-      if (err.status === 401 || err.status === 403) {
+      
+      let errMsg = err.message || "Verifique as configurações de compartilhamento da planilha.";
+      const isScopeError = errMsg.toLowerCase().includes("scope") || errMsg.toLowerCase().includes("insufficient");
+      if (isScopeError) {
+        errMsg = "Erro de Permissão (Escopo Insuficiente): A conta conectada não concedeu permissão para ler planilhas do Google. Por favor, faça logout do Google no menu lateral e reconecte, garantindo que autorizou o acesso às planilhas. Se o erro persistir, certifique-se de que o escopo de leitura do Sheets ('https://www.googleapis.com/auth/spreadsheets.readonly') está habilitado no provedor Google dentro do painel do Supabase.";
+      }
+
+      const isAuthError = err.status === 401 || 
+                          err.status === 403 || 
+                          isScopeError ||
+                          errMsg.toLowerCase().includes("token") || 
+                          errMsg.toLowerCase().includes("login") || 
+                          errMsg.toLowerCase().includes("autenticação") || 
+                          errMsg.toLowerCase().includes("sessão");
+
+      if (isAuthError) {
         setHasSpreadsheetAccess(false);
         setShowReauthPopup(true);
         // Se for erro de sessão expirada / token inválido (401), dispara o robô de reconexão automática
@@ -1372,21 +1387,12 @@ export default function App() {
           console.warn("Detectado token do Google expirado (401). Disparando robô de reconexão...");
           triggerLoginAutomation();
         }
-      } else if (!isQuotaError && !hasSpreadsheetAccess && hasSpreadsheetAccess !== null) {
-        // Leave it false if it was already false, but if it's 429, don't force it to false
-        setHasSpreadsheetAccess(false);
-      } else if (!isQuotaError && hasSpreadsheetAccess === null) {
+      } else if (!isQuotaError) {
         setHasSpreadsheetAccess(false);
       }
       
-      let errMsg = err.message || "Verifique as configurações de compartilhamento da planilha.";
-      const isScopeError = errMsg.toLowerCase().includes("scope") || errMsg.toLowerCase().includes("insufficient");
-      if (isScopeError) {
-        errMsg = "Erro de Permissão (Escopo Insuficiente): A conta conectada não concedeu permissão para ler planilhas do Google. Por favor, faça logout do Google no banner ou menu lateral e reconecte, garantindo que autorizou o acesso às planilhas. Se o erro persistir, certifique-se de que o escopo de leitura do Sheets ('https://www.googleapis.com/auth/spreadsheets.readonly') está habilitado no provedor Google dentro do painel do Supabase.";
-        setShowReauthPopup(true);
-      }
       setSheetSyncError(errMsg);
-      if (showFeedback) {
+      if (showFeedback && !isAuthError) {
         alert(`Falha na sincronização em tempo real: ${errMsg}`);
       }
     } finally {
@@ -3301,37 +3307,7 @@ export default function App() {
         {/* Main Content Arena */}
           <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 w-full mx-auto flex flex-col gap-6">
             {/* Banner de Sincronização Pausada / Erro de Planilha */}
-            {spreadsheetUrl && hasSpreadsheetAccess === false && (
-              <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-sm animate-fade-in shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
-                    <Lock className="w-5 h-5" />
-                  </div>
-                  <div className="text-left">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-800">Sincronização com Planilha Pausada</h4>
-                    <p className="text-xs text-slate-600 mt-0.5 leading-normal">
-                      A conta <span className="font-bold text-amber-950">{googleUser?.email}</span> não pôde sincronizar com o Sheets. Verifique o link ou faça login novamente.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                  <button
-                    onClick={() => triggerSheetsSync(spreadsheetUrl, estagiarios, true)}
-                    disabled={syncingSheets}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-750 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-55"
-                  >
-                    {syncingSheets ? `Sincronizando (${syncDuration.toFixed(1)}s)...` : "Tentar Novamente"}
-                  </button>
-                  <button
-                    onClick={handleGoogleLogin}
-                    disabled={isLoggingInGoogle}
-                    className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer"
-                  >
-                    Reconectar Google
-                  </button>
-                </div>
-              </div>
-            )}
+
 
             {/* Controls Bar */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
