@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
-import { exec, spawn } from "child_process";
 
 
 
@@ -22,9 +21,6 @@ const fetchWithTimeout = async (url: string, options: any = {}, timeoutMs = 2500
     throw error;
   }
 };
-
-let isAutomationRunning = false;
-let automationLogs: string[] = [];
 
 async function startServer() {
   const app = express();
@@ -350,58 +346,7 @@ async function startServer() {
     }
   });
 
-  // API Route: Trigger Login Automation via Puppeteer
-  app.post("/api/trigger-login-automation", (req, res) => {
-    if (isAutomationRunning) {
-      console.log("[Automation] O robô de login já está em execução. Ignorando solicitação duplicada.");
-      return res.json({ success: false, error: "Automação já está em andamento." });
-    }
 
-    isAutomationRunning = true;
-    automationLogs = [];
-    console.log("[Automation] Solicitado início da automação de login pelo frontend...");
-    automationLogs.push("Iniciando processo de automação no servidor...");
-
-    const child = spawn("node", ["automate_login.js"]);
-
-    child.stdout.on("data", (data) => {
-      const text = data.toString();
-      text.split("\n").forEach((line) => {
-        const clean = line.trim();
-        if (clean) {
-          console.log(`[Automation] ${clean}`);
-          automationLogs.push(clean);
-        }
-      });
-    });
-
-    child.stderr.on("data", (data) => {
-      const text = data.toString();
-      text.split("\n").forEach((line) => {
-        const clean = line.trim();
-        if (clean) {
-          console.error(`[Automation Error] ${clean}`);
-          automationLogs.push(`Erro: ${clean}`);
-        }
-      });
-    });
-
-    child.on("close", (code) => {
-      isAutomationRunning = false;
-      console.log(`[Automation] Robô finalizou com código de saída: ${code}`);
-      automationLogs.push(`Processo finalizado (código ${code}).`);
-    });
-
-    res.json({ success: true, message: "Robô de login iniciado em segundo plano." });
-  });
-
-  // API Route: Obter status e logs em tempo real do robô
-  app.get("/api/automation-status", (req, res) => {
-    res.json({
-      running: isAutomationRunning,
-      logs: automationLogs
-    });
-  });
 
   // Integrated Vite Server for Development
   if (process.env.NODE_ENV !== "production") {

@@ -72,8 +72,6 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-let lastAutomationTriggerTime = 0;
-
 export default function App() {
   // Date Helpers
   const getCurrentMonth = () => {
@@ -1427,76 +1425,6 @@ export default function App() {
     } finally {
       if (timerId) clearInterval(timerId);
       setSyncingSheets(false);
-    }
-  };
-
-  // Função para disparar a automação de login (Puppeteer) no backend
-  const triggerLoginAutomation = async () => {
-    const now = Date.now();
-    // Limita o disparo do robô a 1 vez a cada 5 minutos para evitar loops
-    if (now - lastAutomationTriggerTime < 300000) {
-      console.log("[Automation] O robô de login já foi chamado recentemente. Ignorando para evitar loops.");
-      return;
-    }
-    lastAutomationTriggerTime = now;
-    showToast("Sincronização pausada. Solicitando reconexão automática ao servidor...", "info");
-
-    try {
-      const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-      const backendUrl = isLocalhost 
-        ? "/api/trigger-login-automation" 
-        : "http://localhost:3005/api/trigger-login-automation";
-      
-      const logsUrl = isLocalhost
-        ? "/api/automation-status"
-        : "http://localhost:3005/api/automation-status";
-
-      const res = await fetch(backendUrl, { method: "POST" });
-      if (!res.ok) {
-        throw new Error(`Erro HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      if (data.success) {
-        console.log("[Automation] Robô de login iniciado no servidor com sucesso.");
-        
-        // Polling de logs do robô em tempo real
-        let printedLogsCount = 0;
-        console.log("%c[Automation] Iniciando leitura dos logs em tempo real...", "color: #4f46e5; font-weight: bold;");
-        
-        const logInterval = setInterval(async () => {
-          try {
-            const statusRes = await fetch(logsUrl);
-            if (statusRes.ok) {
-              const statusData = await statusRes.json();
-              
-              if (statusData.logs && statusData.logs.length > printedLogsCount) {
-                const newLogs = statusData.logs.slice(printedLogsCount);
-                newLogs.forEach((log: string) => {
-                  console.log(`%c[Automation Robot]%c ${log}`, "color: #4f46e5; font-weight: bold;", "color: inherit;");
-                });
-                printedLogsCount = statusData.logs.length;
-              }
-              
-              if (!statusData.running) {
-                clearInterval(logInterval);
-                console.log("%c[Automation] Execução finalizada. Parando leitura dos logs.", "color: #4f46e5; font-weight: bold;");
-              }
-            }
-          } catch (logErr) {
-            console.error("[Automation] Erro ao buscar logs do robô:", logErr);
-            clearInterval(logInterval);
-          }
-        }, 1500);
-
-      } else {
-        console.warn("[Automation] Backend retornou erro ao iniciar robô:", data.error);
-      }
-    } catch (e: any) {
-      console.error("[Automation] Falha ao solicitar início da automação no servidor:", e);
-      showToast(
-        "Não foi possível conectar ao servidor de automação local (http://localhost:3005). Certifique-se de que o backend está rodando localmente (npm run dev).",
-        "error"
-      );
     }
   };
 
@@ -3252,6 +3180,18 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2">
+              {googleUser && hasSpreadsheetAccess === false && (
+                <button
+                  onClick={handleGoogleLogin}
+                  disabled={isLoggingInGoogle}
+                  className="px-3 py-1.5 bg-amber-50 border border-amber-300 hover:bg-amber-100 text-amber-900 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm animate-pulse active:scale-[0.98]"
+                  title="A sincronização perdeu o acesso ao Google Sheets. Clique para reconectar sua conta."
+                >
+                  <Lock className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Reconectar Google</span>
+                </button>
+              )}
+
               {googleUser ? (
                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-1.5 pl-2">
                   {googleUser.photoURL ? (
@@ -3270,9 +3210,16 @@ export default function App() {
                     <p className="text-[10px] font-bold text-slate-850 truncate leading-none">
                       {googleUser.displayName}
                     </p>
-                    <p className="text-[8px] text-emerald-600 font-bold leading-none uppercase tracking-wider mt-0.5">
-                      Conta Ativa
-                    </p>
+                    {hasSpreadsheetAccess === false ? (
+                      <p className="text-[8px] text-amber-600 font-bold leading-none uppercase tracking-wider mt-0.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                        Desconectado
+                      </p>
+                    ) : (
+                      <p className="text-[8px] text-emerald-600 font-bold leading-none uppercase tracking-wider mt-0.5">
+                        Conta Ativa
+                      </p>
+                    )}
                   </div>
                   <button
                     onClick={handleGoogleLogout}
