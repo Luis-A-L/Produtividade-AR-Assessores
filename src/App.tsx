@@ -1416,11 +1416,6 @@ export default function App() {
       if (isAuthError) {
         setHasSpreadsheetAccess(false);
         setShowReauthPopup(true);
-        // Se for erro de sessão expirada / token inválido (401), dispara o robô de reconexão automática
-        if (err.status === 401) {
-          console.warn("Detectado token do Google expirado (401). Disparando robô de reconexão...");
-          triggerLoginAutomation();
-        }
       } else if (!isQuotaError) {
         setHasSpreadsheetAccess(false);
       }
