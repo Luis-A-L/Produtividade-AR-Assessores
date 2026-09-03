@@ -19,7 +19,7 @@ if (isOAuthPopupCallback) {
         hash: window.location.hash,
         search: window.location.search,
       },
-      window.location.origin
+      '*'
     );
   } catch (e) {
     console.error('Falha ao comunicar com janela principal:', e);

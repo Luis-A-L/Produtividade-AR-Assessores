@@ -28,7 +28,7 @@ let automationLogs: string[] = [];
 
 async function startServer() {
   const app = express();
-  const PORT = 3001;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   app.use(express.json());
 
@@ -422,6 +422,15 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server executing at http://localhost:${PORT}`);
   });
+
+  const SECONDARY_PORT = PORT === 3000 ? 3001 : 3000;
+  try {
+    app.listen(SECONDARY_PORT, "0.0.0.0", () => {
+      console.log(`Secondary server listening at http://localhost:${SECONDARY_PORT}`);
+    }).on("error", () => {
+      // Ignora silenciosamente se a porta secundária já estiver em uso
+    });
+  } catch (e) {}
 }
 
 startServer();

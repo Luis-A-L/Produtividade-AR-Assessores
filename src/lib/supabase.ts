@@ -148,7 +148,12 @@ export const signInWithGoogle = async (): Promise<{ user: any; accessToken: stri
         }
 
         const onMessage = async (event: MessageEvent) => {
-            if (event.origin !== window.location.origin) return
+            const isAllowedOrigin =
+                event.origin === window.location.origin ||
+                event.origin.includes('localhost') ||
+                event.origin.includes('127.0.0.1') ||
+                event.origin.includes('github.io')
+            if (!isAllowedOrigin) return
             if (event.data?.type === 'SUPABASE_OAUTH_CALLBACK') {
                 const hash = event.data.hash || ''
                 const search = event.data.search || ''
