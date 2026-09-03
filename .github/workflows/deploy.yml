@@ -31,8 +31,8 @@ jobs:
 
       - name: Create env file
         run: |
-          echo "VITE_SUPABASE_URL=https://nukddxkiffzghnppsjwi.supabase.co" > .env
-          echo "VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im51a2RkeGtpZmZ6Z2hucHBzandpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4ODM3NjksImV4cCI6MjA5NzQ1OTc2OX0.GiPVsDKA66mB9d7T5ec8Y5g3bdq8LOq5tKA4KKzfEg8" >> .env
+          echo "VITE_SUPABASE_URL=https://lqmjfjusljxduxwkoqhc.supabase.co" > .env
+          echo "VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxxbWpmanVzbGp4ZHV4d2tvcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMTQyNjQsImV4cCI6MjA5ODU5MDI2NH0.EjdUNiNDuDUWebMVOJmnqF2plkDtvrJo-2yJLx_heZk" >> .env
       - name: Build
         run: npm run build
         env:

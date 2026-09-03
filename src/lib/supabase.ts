@@ -16,8 +16,8 @@ const getSupabaseCredentials = () => {
     }
 
     return {
-        url: "",
-        key: "",
+        url: "https://lqmjfjusljxduxwkoqhc.supabase.co",
+        key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxxbWpmanVzbGp4ZHV4d2tvcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMTQyNjQsImV4cCI6MjA5ODU5MDI2NH0.EjdUNiNDuDUWebMVOJmnqF2plkDtvrJo-2yJLx_heZk",
         fromEnv: false
     }
 }
@@ -77,26 +77,141 @@ export const supabase = isSupabaseConfigured
 // ==========================================
 // Google OAuth Login (com escopo Sheets)
 // ==========================================
-export const signInWithGoogle = async () => {
+export const signInWithGoogle = async (): Promise<{ user: any; accessToken: string } | null> => {
     if (!isSupabaseConfigured) {
           throw new Error('Supabase nao configurado. Por favor, configure as credenciais.')
     }
+    const redirectUrl = window.location.origin + import.meta.env.BASE_URL
+
     const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
                   scopes: 'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile openid',
-                  redirectTo: window.location.origin + import.meta.env.BASE_URL,
+                  redirectTo: redirectUrl,
+                  skipBrowserRedirect: true,
                   queryParams: {
                             access_type: 'offline',
                             prompt: 'consent',
                   },
           },
     })
-    if (error) {
-          console.error('Erro no login com Google:', error)
-          throw error
+    if (error || !data?.url) {
+          console.error('Erro ao obter URL de autenticação com Google:', error)
+          throw error || new Error('Não foi possível obter a URL de autenticação.')
     }
-    return data
+
+    // Abre janela pop-up centralizada
+    const width = 520
+    const height = 650
+    const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - width) / 2))
+    const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - height) / 2))
+
+    const popup = window.open(
+        data.url,
+        'google_oauth_popup',
+        `width=${width},height=${height},left=${left},top=${top},status=no,toolbar=no,menubar=no,location=no`
+    )
+
+    if (!popup) {
+        throw new Error('A janela pop-up foi bloqueada pelo navegador. Permita pop-ups para fazer login.')
+    }
+
+    return new Promise((resolve, reject) => {
+        let isResolved = false
+
+        const cleanup = () => {
+            isResolved = true
+            window.removeEventListener('message', onMessage)
+            if (authSubscription) {
+                authSubscription.unsubscribe()
+            }
+            if (checkClosedInterval) {
+                clearInterval(checkClosedInterval)
+            }
+        }
+
+        const handleAuthSuccess = async (providerToken?: string | null) => {
+            if (isResolved) return
+            cleanup()
+
+            if (providerToken) {
+                localStorage.setItem('google_provider_token', providerToken)
+            }
+
+            const { data: sessionData } = await supabase.auth.getSession()
+            const session = sessionData?.session
+            const token = providerToken || session?.provider_token || localStorage.getItem('google_provider_token') || ''
+            resolve({
+                user: session?.user ?? null,
+                accessToken: token,
+            })
+        }
+
+        const onMessage = async (event: MessageEvent) => {
+            if (event.origin !== window.location.origin) return
+            if (event.data?.type === 'SUPABASE_OAUTH_CALLBACK') {
+                const hash = event.data.hash || ''
+                const search = event.data.search || ''
+
+                try {
+                    let providerToken: string | null = null
+
+                    if (hash) {
+                        const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : hash)
+                        const accessToken = hashParams.get('access_token')
+                        const refreshToken = hashParams.get('refresh_token')
+                        providerToken = hashParams.get('provider_token')
+
+                        if (accessToken && refreshToken) {
+                            await supabase.auth.setSession({
+                                access_token: accessToken,
+                                refresh_token: refreshToken,
+                            })
+                        }
+                    } else if (search) {
+                        const searchParams = new URLSearchParams(search.startsWith('?') ? search.substring(1) : search)
+                        const code = searchParams.get('code')
+                        if (code) {
+                            const { data: exchangeData } = await supabase.auth.exchangeCodeForSession(code)
+                            providerToken = exchangeData.session?.provider_token ?? null
+                        }
+                    }
+
+                    await handleAuthSuccess(providerToken)
+                } catch (err) {
+                    console.error('Erro ao processar callback de OAuth no pop-up:', err)
+                    if (!isResolved) {
+                        cleanup()
+                        reject(err)
+                    }
+                }
+            }
+        }
+
+        window.addEventListener('message', onMessage)
+
+        const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session?.user) {
+                const token = session.provider_token || localStorage.getItem('google_provider_token')
+                await handleAuthSuccess(token)
+            }
+        })
+
+        const checkClosedInterval = setInterval(() => {
+            if (popup.closed) {
+                setTimeout(async () => {
+                    if (isResolved) return
+                    const { data: sessionData } = await supabase.auth.getSession()
+                    if (sessionData?.session?.user) {
+                        await handleAuthSuccess(sessionData.session.provider_token)
+                    } else {
+                        cleanup()
+                        resolve(null)
+                    }
+                }, 500)
+            }
+        }, 600)
+    })
 }
 
 export const signOut = async () => {
@@ -163,6 +278,7 @@ const rowsToCsv = (rows: any[][]): string => {
 export interface SheetFetchResult {
     sheets: Record<string, string>
     csvText: string
+    targetSheetTitle?: string
 }
 
 export const fetchSheetDataDirectly = async (url: string, token: string): Promise<SheetFetchResult> => {
@@ -193,6 +309,14 @@ export const fetchSheetDataDirectly = async (url: string, token: string): Promis
         throw new Error("A planilha não contém abas.")
     }
 
+    // Extrai o gid da URL (ex: gid=1415874718) para localizar a aba de setembro
+    const gidMatch = url.match(/gid=([0-9]+)/)
+    const targetGid = gidMatch ? parseInt(gidMatch[1], 10) : null
+    const matchingSheet = targetGid !== null
+        ? sheetsList.find((s: any) => s.properties?.sheetId === targetGid)
+        : null
+    const targetSheetTitle = matchingSheet?.properties?.title
+
     const sheetsResultMap: Record<string, string> = {}
 
     const rangesQuery = sheetsList
@@ -220,9 +344,10 @@ export const fetchSheetDataDirectly = async (url: string, token: string): Promis
         sheetsResultMap[title] = rowsToCsv(rows)
     })
 
-    const primaryTitle = sheetsList[0]?.properties?.title || "Geral"
+    const primaryTitle = targetSheetTitle || sheetsList[0]?.properties?.title || "Geral"
     return {
         sheets: sheetsResultMap,
         csvText: sheetsResultMap[primaryTitle] || "",
+        targetSheetTitle: targetSheetTitle || undefined,
     }
 }

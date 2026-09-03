@@ -2,8 +2,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
-  'https://nukddxkiffzghnppsjwi.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im51a2RkeGtpZmZ6Z2hucHBzandpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4ODM3NjksImV4cCI6MjA5NzQ1OTc2OX0.GiPVsDKA66mB9d7T5ec8Y5g3bdq8LOq5tKA4KKzfEg8'
+  process.env.VITE_SUPABASE_URL || 'https://lqmjfjusljxduxwkoqhc.supabase.co',
+  process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxxbWpmanVzbGp4ZHV4d2tvcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMTQyNjQsImV4cCI6MjA5ODU5MDI2NH0.EjdUNiNDuDUWebMVOJmnqF2plkDtvrJo-2yJLx_heZk'
 );
 
 async function main() {
@@ -19,10 +19,10 @@ async function main() {
   const currentValue = existing?.value || {};
   console.log('Configuração atual:', JSON.stringify(currentValue, null, 2));
 
-  // 2. Atualizar adicionando o campo selectedSheetName
+  // 2. Atualizar URL para a aba de setembro
   const newValue = {
     ...currentValue,
-    selectedSheetName: 'Controle detalhado',
+    url: 'https://docs.google.com/spreadsheets/d/17MlkyQC2GnrK2f-mxZQZusv7hORoBZRQpcVAT6bbRIQ/edit?gid=1415874718#gid=1415874718',
   };
 
   const { error: updateErr } = await supabase

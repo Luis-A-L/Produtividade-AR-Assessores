@@ -195,7 +195,7 @@ export default function App() {
 
   // Google Sheets Sync State
   const DEFAULT_SHEET_URL =
-    "https://docs.google.com/spreadsheets/d/17MlkyQC2GnrK2f-mxZQZusv7hORoBZRQpcVAT6bbRIQ/edit?gid=1254289010#gid=1254289010";
+    "https://docs.google.com/spreadsheets/d/17MlkyQC2GnrK2f-mxZQZusv7hORoBZRQpcVAT6bbRIQ/edit?gid=1415874718#gid=1415874718";
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState<boolean>(false);
   const [spreadsheetUrl, setSpreadsheetUrl] =
     useState<string>(DEFAULT_SHEET_URL);
@@ -513,12 +513,16 @@ export default function App() {
       let activeUrl = DEFAULT_SHEET_URL;
       let autoSync = true;
       let lastSync = "";
+      let activeSheetName = "Dados-GR";
 
       if (settingsSnap.exists()) {
         const settingsData = settingsSnap.data();
         activeUrl = settingsData.url || DEFAULT_SHEET_URL;
         autoSync = settingsData.autoSync !== undefined ? settingsData.autoSync : true;
         lastSync = settingsData.lastSync || "";
+        if (settingsData.selectedSheetName) {
+          activeSheetName = settingsData.selectedSheetName;
+        }
       }
 
       // Se a URL do banco estiver desatualizada, forçamos a nova e atualizamos o banco de dados
@@ -527,14 +531,14 @@ export default function App() {
         setDoc(doc(db, "settings", "googleSheet"), {
           url: DEFAULT_SHEET_URL,
           autoSync: autoSync,
-          lastSync: lastSync
+          lastSync: lastSync,
+          selectedSheetName: activeSheetName,
         }).catch(err => console.error("Erro ao salvar settings da planilha padrão no Supabase:", err));
       }
 
       setSpreadsheetUrl(activeUrl);
       setAutoSyncEnabled(autoSync);
-      // Sempre usa "Dados-GR" — conforme a nova especificação
-      setSelectedSheetName("Dados-GR");
+      setSelectedSheetName(activeSheetName);
       setLastSyncTime(lastSync);
 
       // Não tenta criar settings se não existir — o usuário autenticado fará isso depois
@@ -703,17 +707,43 @@ export default function App() {
     const candidateIndividualSheets: { name: string; content: string }[] = [];
 
     // 1. Identify sheets
+    const targetNorm = targetControleSheetName ? normalizeText(targetControleSheetName) : "";
+
     Object.entries(sheets).forEach(([name, content]) => {
       const norm = normalizeText(name);
       // Ignora abas de template/modelo (ex: MODELO GERAL) de onde não precisamos de nenhum dado
       if (norm.includes("modelo") || norm.includes("template")) {
         return;
       }
-      // Processa exclusivamente a aba Dados-GR
-      if (norm === "dados-gr") {
+      // Se houver nome de aba alvo específica (ex: aba de setembro indicada pela URL ou seletor)
+      if (targetNorm && norm === targetNorm) {
+        allControleSheets.push({ name, content });
+      } else if (!targetNorm && (norm === "dados-gr" || norm.includes("setembro") || norm.includes("controle"))) {
         allControleSheets.push({ name, content });
       }
     });
+
+    // Fallback: se não encontrou com correspondência exata, tenta encontrar por inclusão de setembro ou do alvo
+    if (allControleSheets.length === 0) {
+      Object.entries(sheets).forEach(([name, content]) => {
+        const norm = normalizeText(name);
+        if (norm.includes("modelo") || norm.includes("template")) return;
+        if (norm === "dados-gr" || norm.includes("setembro") || (targetNorm && (norm.includes(targetNorm) || targetNorm.includes(norm)))) {
+          allControleSheets.push({ name, content });
+        }
+      });
+    }
+
+    // Se ainda assim não encontrou nenhuma e existe uma primeira aba válida (não template):
+    if (allControleSheets.length === 0) {
+      const firstEntry = Object.entries(sheets).find(([name]) => {
+        const norm = normalizeText(name);
+        return !norm.includes("modelo") && !norm.includes("template");
+      });
+      if (firstEntry) {
+        allControleSheets.push({ name: firstEntry[0], content: firstEntry[1] });
+      }
+    }
 
     const controleSheets = allControleSheets;
 
@@ -1298,10 +1328,14 @@ export default function App() {
       }
 
       const resData = await fetchSheetDataDirectly(urlStr, activeToken);
+      const targetSheet = resData.targetSheetTitle || selectedSheetName;
+      if (resData.targetSheetTitle && resData.targetSheetTitle !== selectedSheetName) {
+        setSelectedSheetName(resData.targetSheetTitle);
+      }
       const parseResult = parseSheetData(
         resData.sheets || resData.csvText,
         activeEstagiarios,
-        selectedSheetName,
+        targetSheet,
       );
 
       if (showFeedback) {
@@ -1561,10 +1595,14 @@ export default function App() {
       }
 
       const resData = await fetchSheetDataDirectly(spreadsheetUrl.trim(), activeToken);
+      const targetSheet = resData.targetSheetTitle || selectedSheetName;
+      if (resData.targetSheetTitle && resData.targetSheetTitle !== selectedSheetName) {
+        setSelectedSheetName(resData.targetSheetTitle);
+      }
       const parseResult = parseSheetData(
         resData.sheets || resData.csvText,
         estagiarios,
-        selectedSheetName,
+        targetSheet,
       );
 
       if (!parseResult.success) {

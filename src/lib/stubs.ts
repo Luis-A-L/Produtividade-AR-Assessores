@@ -337,8 +337,7 @@ export const batchUpsertEntries = async (items: Omit<ProductivityEntry, 'id'>[])
 // =====================================================
 
 export const googleSignIn = async (): Promise<{ user: any; accessToken: string } | null> => {
-  await _signInWithGoogle()
-  return null // redirect flow — a sessão é recuperada no retorno
+  return await _signInWithGoogle()
 }
 
 export const logout = async (): Promise<void> => {

@@ -237,7 +237,10 @@ async function startServer() {
             throw errBatch; // Repassa erro para bloco principal
           }
 
-          const primarySheetName = sheetsList[0].properties.title;
+          const gidMatch = url.match(/gid=([0-9]+)/);
+          const targetGid = gidMatch ? parseInt(gidMatch[1], 10) : null;
+          const matchingSheet = targetGid !== null ? sheetsList.find((s: any) => s.properties?.sheetId === targetGid) : null;
+          const primarySheetName = matchingSheet?.properties?.title || sheetsList[0].properties.title;
           const defaultCsvText = sheetsResultMap[primarySheetName] || "";
 
           logSheetsData(sheetsResultMap);
